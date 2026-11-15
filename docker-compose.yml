@@ -1,0 +1,18 @@
+# Opcjonalny Postgres zamiast wbudowanego PGlite.
+# Uruchom: docker compose up -d
+# Potem w .env.local:
+# DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gymrat
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gymrat
+    ports:
+      - "5432:5432"
+    volumes:
+      - gymrat-pg:/var/lib/postgresql/data
+
+volumes:
+  gymrat-pg:
