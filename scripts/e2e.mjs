@@ -67,7 +67,7 @@ const created = await req('/api/trainer/clients', {
   body: JSON.stringify({ name: 'E2E Ania', email: `e2e-${Date.now()}@example.com` }),
 })
 assert(created.status === 200, `tworzenie klienta: ${created.status} ${JSON.stringify(created.data)}`)
-assert(created.data.emailed === false, 'bez RESEND link nie idzie mailem')
+assert(created.data.emailed === false, 'bez Gmaila i Resend link nie idzie mailem')
 assert(created.data.emailText.startsWith(SENTENCE), 'dokładna treść zaproszenia')
 assert(created.data.emailText.includes(created.data.inviteUrl), 'link w treści')
 assert(!created.data.emailText.includes('abo otworzyć'), 'bez literówki abo')

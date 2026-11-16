@@ -3,7 +3,7 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   devIndicators: false,
-  serverExternalPackages: ['@electric-sql/pglite', 'postgres'],
+  serverExternalPackages: ['@electric-sql/pglite', 'postgres', 'nodemailer'],
   async headers() {
     return [
       {

@@ -29,9 +29,9 @@ Hasła nie ma. Serwer sprawdza adres na allowliście i zapisuje sesję w ciastec
 
 Baza lokalna to wbudowany Postgres (PGlite) w katalogu `data/pglite`. Nic nie trzeba stawiać. Katalog `data/` nie trafia do gita.
 
-### Zaproszenie bez Resend
+### Zaproszenie bez konta pocztowego
 
-Zostaw puste `RESEND_API_KEY`. Po wysłaniu zaproszenia:
+Zostaw puste `GMAIL_USER`, `GMAIL_APP_PASSWORD` i `RESEND_API_KEY`. Po wysłaniu zaproszenia:
 
 - w oknie „WYŚLIJ ZAPROSZENIE” pojawia się link (można go skopiować),
 - ta sama treść wpada do logu serwera, z prefiksem `[gym-rat]`.
@@ -78,13 +78,14 @@ Gdy klient wejdzie na `/panel` bez linku, zobaczy prośbę o otwarcie maila. Je�
 
 ## Konta, sekrety i deploy
 
-Do działania u ludzi potrzebne są trzy usługi. Lokalnie żadna nie jest wymagana.
+Do działania u ludzi potrzebne są Supabase, Vercel i konto Gmail. Lokalnie żadne nie jest wymagane.
 
 | Usługa | Po co | Sekret |
 | --- | --- | --- |
 | [Supabase](https://supabase.com) | Postgres (dane i, jeśli nie używasz Storage, także zdjęcia) | `DATABASE_URL` |
 | [Supabase Storage](https://supabase.com/docs/guides/storage) | opcjonalnie pliki zdjęć | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET` |
-| [Resend](https://resend.com) | maile z zaproszeniem | `RESEND_API_KEY`, `EMAIL_FROM` |
+| Gmail (zalecane) | maile z zaproszeniem, bez własnej domeny | `GMAIL_USER`, `GMAIL_APP_PASSWORD` |
+| [Resend](https://resend.com) | maile, gdy masz zweryfikowaną domenę | `RESEND_API_KEY`, `EMAIL_FROM` |
 | [Vercel](https://vercel.com) | hosting | zmienne poniżej |
 
 Wygeneruj sekret sesji:
@@ -103,8 +104,10 @@ Wszystkie są w `.env.example`. Na Vercelu wpisz je w Settings → Environment V
 | `SESSION_SECRET` | tak, min. 16 znaków | Podpis ciasteczka trenera. Bez tego produkcja nie wstanie. |
 | `APP_URL` | zalecana | Adres publiczny bez końcowego slasha, np. `https://gym-rat.vercel.app`. Linki w mailach. Gdy puste, używany jest host żądania. |
 | `TRAINER_EMAILS` | nie | Allowlista, po przecinku. Puste = dwa adresy z makiety. |
-| `RESEND_API_KEY` | do prawdziwych maili | Puste = link tylko w logu i w oknie zaproszenia. |
-| `EMAIL_FROM` | gdy jest klucz Resend | Nadawca, np. `Gym Rat <zaproszenia@twojadomena.pl>`. |
+| `GMAIL_USER` | zalecane do maili | Adres Gmail, z którego wychodzą zaproszenia. Nadawca: „Gym Rat”. |
+| `GMAIL_APP_PASSWORD` | razem z `GMAIL_USER` | Hasło aplikacji Google (nie hasło do konta). |
+| `RESEND_API_KEY` | nie, gdy jest Gmail | Zapasowy dostawca. Używany tylko, gdy brak `GMAIL_*`. |
+| `EMAIL_FROM` | gdy jest klucz Resend | Nadawca Resend, np. `Gym Rat <zaproszenia@twojadomena.pl>`. |
 | `SUPABASE_URL` | nie | Adres projektu, gdy zdjęcia mają iść do Storage. |
 | `SUPABASE_SERVICE_ROLE_KEY` | nie | Klucz `service_role` (sekret, tylko serwer). |
 | `SUPABASE_BUCKET` | nie | Nazwa bucketu. Domyślnie `avatars`. |
@@ -133,21 +136,38 @@ Zdjęcia klientów domyślnie lądują w kolumnie w tej samej bazie (wystarczy s
 
 Gdy upload do Storage się nie uda, trener zobaczy błąd i zdjęcie nie zniknie z poprzedniej wersji.
 
-### 3. Resend (maile)
+### 3. Gmail (zalecane — bez własnej domeny)
+
+Zaproszenia wychodzą ze zwykłego konta Gmail przez SMTP (`smtp.gmail.com`, port 465). W skrzynce klienta nadawca nazywa się **Gym Rat**, a adres to `GMAIL_USER`. Własna domena nie jest potrzebna.
+
+1. Włącz weryfikację dwuetapową: [myaccount.google.com/signinoptions/two-step-verification](https://myaccount.google.com/signinoptions/two-step-verification). Bez niej Google nie pokaże haseł aplikacji.
+2. Otwórz [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords).
+3. Utwórz hasło aplikacji (nazwa np. „Gym Rat”). Google pokaże 16 znaków, często ze spacjami.
+4. Ustaw:
+   - `GMAIL_USER` — pełny adres, np. `tomaszstefaniszyn9@gmail.com`
+   - `GMAIL_APP_PASSWORD` — te 16 znaków (spacje można zostawić)
+
+Hasło do logowania na Gmaila tu nie działa. Konto firmowe Google Workspace może mieć hasła aplikacji wyłączone przez administratora — wtedy trzeba je włączyć w konsoli Workspace albo użyć Resend.
+
+Zwykłe konto Gmail wysyła przez SMTP do około **500 wiadomości na dobę**. Dla zaproszeń klientów to duży zapas, ale to nie jest poczta masowa: przy nagłym ruchu Google może wysyłkę czasowo zatrzymać.
+
+Gdy ustawione są i Gmail, i Resend, idzie Gmail.
+
+### 4. Resend (opcjonalnie, gdy masz domenę)
 
 1. Załóż konto i weź API key → `RESEND_API_KEY`.
 2. Dodaj i zweryfikuj własną domenę (DNS: SPF i DKIM, Resend pokazuje rekordy).
 3. `EMAIL_FROM` ustaw na adres z tej domeny, np. `Gym Rat <zaproszenia@twojadomena.pl>`.
 
-Bez zweryfikowanej domeny Resend pozwala wysyłać tylko z `onboarding@resend.dev` i **tylko na adres właściciela konta Resend**. Do prawdziwych klientów domena jest potrzebna.
+Bez zweryfikowanej domeny Resend pozwala wysyłać tylko z `onboarding@resend.dev` i **tylko na adres właściciela konta Resend**. Dlatego przy braku domeny zostaw Resend puste i użyj Gmaila.
 
-Logika wysyłki jest w `src/lib/email.ts`, gdyby trzeba było podmienić dostawcę. Zdanie zaproszenia jest w `src/lib/invite.ts`.
+Logika wysyłki jest w `src/lib/email.ts`. Zdanie zaproszenia jest w `src/lib/invite.ts`.
 
-### 4. Vercel
+### 5. Vercel
 
 1. Wypchnij repozytorium na GitHuba.
 2. [vercel.com/new](https://vercel.com/new) → Import. Framework: Next.js. Build: `npm run build`. Node 20+.
-3. Wpisz zmienne z tabeli (przynajmniej `DATABASE_URL`, `SESSION_SECRET`, `APP_URL`, a do maili także Resend).
+3. Wpisz zmienne z tabeli (przynajmniej `DATABASE_URL`, `SESSION_SECRET`, `APP_URL`, a do maili `GMAIL_USER` i `GMAIL_APP_PASSWORD`). Wysyłka działa na Node.js (nie na Edge).
 4. Deploy.
 5. `APP_URL` ustaw na dokładny adres produkcji (np. `https://twoj-projekt.vercel.app`) i zrób redeploy, jeśli dopisałeś go po pierwszym buildzie.
 6. Wejdź na `https://twoj-adres/trener` i zaloguj się mailem z allowlisty.
@@ -207,7 +227,7 @@ Opcjonalny Postgres w Dockerze zamiast PGlite: `docker compose up -d` i `DATABAS
 
 - **„SESSION_SECRET jest wymagany”** — na produkcji ustaw sekret, minimum 16 znaków.
 - **Błąd połączenia z bazą** — użyj session poolera (port 5432) i `sslmode=require`. Transaction pooler (6543) bywa kapryśny; aplikacja wyłącza prepared statements (`prepare: false`), ale session pooler jest pewniejszy.
-- **Mail nie dochodzi** — sprawdź `EMAIL_FROM` i zweryfikowaną domenę w Resend. Bez klucza link jest w logu procesu Node, nie w skrzynce.
+- **Mail nie dochodzi** — przy Gmailu sprawdź weryfikację dwuetapową i hasło aplikacji, nie zwykłe hasło. Przy Resendzie sprawdź `EMAIL_FROM` i zweryfikowaną domenę. Bez `GMAIL_*` i bez `RESEND_API_KEY` link jest w logu procesu Node i w oknie zaproszenia, nie w skrzynce.
 - **Klient nie widzi planu** — link musi być z właściwej domeny (`APP_URL`). Stary link działa, dopóki klient jest w bazie.
 - **Pusta baza lokalna** — usuń `data/pglite` przy wyłączonym serwerze i uruchom aplikację albo `npm run db:seed` ponownie.
 - **Dwa procesy i błąd PGlite** — nie odpalaj seeda równolegle z `npm run dev`.
