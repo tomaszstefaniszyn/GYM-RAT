@@ -128,6 +128,14 @@ export function LogoutIcon() {
   )
 }
 
+export function TrashIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 7h14M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M8 7l.8 12.2A1.5 1.5 0 0 0 10.3 20.5h3.4a1.5 1.5 0 0 0 1.5-1.3L16 7" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export function PhotoIcon({ plus = false }: { plus?: boolean }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
