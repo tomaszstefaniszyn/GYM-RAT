@@ -39,7 +39,7 @@ export function ClientsScreen({ initial }: { initial: ClientListItem[] }) {
     const close = (event: PointerEvent) => {
       const target = event.target
       if (!(target instanceof Element)) return
-      if (target.closest('[data-swipe]') || target.closest('.row-menu') || target.closest('.menu')) return
+      if (target.closest('[data-swipe]') || target.closest('.row-more') || target.closest('.menu')) return
       setOpenId(null)
       setMenuId(null)
     }
@@ -345,7 +345,17 @@ function ClientRow({
             <ChevronIcon />
           </Link>
           <div className="row-menu-wrap">
-            <button type="button" className="row-more" aria-label={`Opcje: ${client.name}`} onClick={onMenu}>
+            <button
+              type="button"
+              className="row-more"
+              aria-label={`Opcje: ${client.name}`}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onMenu()
+              }}
+            >
               <DotsIcon />
             </button>
             {menu && (
