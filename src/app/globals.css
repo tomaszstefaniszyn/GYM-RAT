@@ -406,13 +406,13 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 .menu button.danger { color: var(--danger); }
 .cols {
   display: grid;
-  grid-template-columns: 28px 52px minmax(0, 1fr) 52px 52px 36px;
-  gap: 8px;
+  grid-template-columns: 26px 48px minmax(0, 1fr) 46px 46px 34px;
+  gap: 6px;
   margin: 14px 8px 4px;
   color: #9a948c;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
 }
 .cols span:nth-child(1) { grid-column: 3; }
 .cols span:nth-child(2) { grid-column: 4; text-align: center; }
@@ -425,14 +425,14 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 .ex-card.is-done { background: var(--green-soft); }
 .ex-main {
   display: grid;
-  grid-template-columns: 28px 52px minmax(0, 1fr) 52px 52px 36px;
-  gap: 8px;
+  grid-template-columns: 26px 48px minmax(0, 1fr) 46px 46px 34px;
+  gap: 6px;
   align-items: start;
 }
 .ex-num { color: #9a948c; font-weight: 800; font-size: 13px; padding-top: 16px; }
 .photo, .photo-btn {
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   border-radius: 12px;
   background: #eeeae3;
   display: grid;
@@ -476,7 +476,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 .chevron.down { transform: rotate(90deg); }
 .chevron.up { transform: rotate(-90deg); }
 .metric, .metric-text {
-  width: 52px;
+  width: 46px;
   height: 40px;
   margin-top: 8px;
   border: 1px solid #e4dfd6;
@@ -672,9 +672,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 @media (max-width: 360px) {
   .hero { font-size: 34px; }
   .grid-2 { grid-template-columns: 1fr; }
-  .cols { grid-template-columns: 24px 44px minmax(0, 1fr) 44px 44px 32px; gap: 6px; }
-  .ex-main { grid-template-columns: 24px 44px minmax(0, 1fr) 44px 44px 32px; gap: 6px; }
-  .photo, .photo-btn { width: 44px; height: 44px; }
-  .metric, .metric-text { width: 44px; }
-  .ex-desc, .ex-remove { margin-left: 74px; }
+  .cols, .ex-main { grid-template-columns: 22px 40px minmax(0, 1fr) 40px 40px 30px; gap: 4px; }
+  .photo, .photo-btn { width: 40px; height: 40px; }
+  .metric, .metric-text { width: 40px; }
+  .ex-desc, .ex-remove { margin-left: 66px; }
 }
