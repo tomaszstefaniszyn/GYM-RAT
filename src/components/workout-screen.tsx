@@ -7,7 +7,7 @@ import { api } from '@/lib/api-client'
 import type { WorkoutDTO } from '@/lib/types'
 import { usePoll } from '@/lib/use-poll'
 import { CropDialog } from './crop-dialog'
-import { BackIcon, CheckIcon, ChevronIcon, DotsIcon, Logo, PhotoIcon } from './mark'
+import { BackIcon, CheckIcon, ChevronIcon, DotsIcon, Logo, PhotoIcon, TrashIcon } from './mark'
 
 type DraftExercise = {
   key: string
@@ -74,6 +74,37 @@ function mergeDone(local: DraftBlock[], server: WorkoutDTO, pending: Set<string>
   }))
 }
 
+function NameField({
+  value,
+  onChange,
+  label,
+  placeholder,
+}: {
+  value: string
+  onChange: (value: string) => void
+  label: string
+  placeholder: string
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      className="ex-name"
+      aria-label={label}
+      placeholder={placeholder}
+      rows={1}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  )
+}
+
 function blobToBase64(blob: Blob) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
@@ -118,6 +149,7 @@ export function WorkoutScreen({
   const [confirmWorkout, setConfirmWorkout] = useState(false)
   const [focusKey, setFocusKey] = useState<string | null>(null)
   const [crop, setCrop] = useState<{ src: string; key: string } | null>(null)
+  const [lightbox, setLightbox] = useState<string | null>(null)
   const dirty = useRef(false)
   const pending = useRef(new Set<string>())
   const fileRef = useRef<HTMLInputElement>(null)
@@ -131,6 +163,15 @@ export function WorkoutScreen({
     window.addEventListener('beforeunload', onLeave)
     return () => window.removeEventListener('beforeunload', onLeave)
   }, [])
+
+  useEffect(() => {
+    if (!lightbox) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLightbox(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [lightbox])
 
   usePoll(async () => {
     const data = await api<WorkoutDTO>(reloadUrl)
@@ -309,7 +350,7 @@ export function WorkoutScreen({
                   >
                     <ChevronIcon dir={block.open ? 'up' : 'down'} />
                   </button>
-                  {trainer && (
+                  {trainer ? (
                     <div className="menu-wrap">
                       <button
                         type="button"
@@ -350,19 +391,15 @@ export function WorkoutScreen({
                         </div>
                       )}
                     </div>
+                  ) : (
+                    <span className="icon-btn dots-inert" aria-hidden="true">
+                      <DotsIcon />
+                    </span>
                   )}
                 </div>
               </div>
               {block.open && (
                 <>
-                  {total > 0 && (
-                    <div className="cols">
-                      <span>ĆWICZENIE</span>
-                      <span>SERIE</span>
-                      <span>REPS</span>
-                      <span />
-                    </div>
-                  )}
                   {block.exercises.map((exercise, index) => {
                     const removed = exercise.imageFile === null
                     const src =
@@ -370,10 +407,28 @@ export function WorkoutScreen({
                       (!removed && exercise.hasImage && exercise.id
                         ? `${imageBase}/${exercise.id}/image?v=${encodeURIComponent(exercise.updatedAt)}`
                         : null)
+                    const photo = src ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={src} alt="" />
+                    ) : (
+                      <PhotoIcon plus={trainer} />
+                    )
                     return (
                       <article key={exercise.key} className={exercise.done ? 'ex-card is-done' : 'ex-card'}>
-                        <div className="ex-main">
-                          <div className="ex-num">{String(index + 1).padStart(2, '0')}</div>
+                        <div className="ex-top">
+                          <span className="ex-badge">{String(index + 1).padStart(2, '0')}</span>
+                          {trainer ? (
+                            <NameField
+                              value={exercise.cwiczenie}
+                              label="Nazwa ćwiczenia"
+                              placeholder="Nazwa ćwiczenia"
+                              onChange={(value) => updateExercise(block.key, exercise.key, { cwiczenie: value })}
+                            />
+                          ) : (
+                            <div className="ex-title">{exercise.cwiczenie}</div>
+                          )}
+                        </div>
+                        <div className="ex-stats">
                           {trainer ? (
                             <button
                               type="button"
@@ -384,95 +439,103 @@ export function WorkoutScreen({
                                 fileRef.current?.click()
                               }}
                             >
-                              {src ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={src} alt="" />
-                              ) : (
-                                <PhotoIcon plus />
-                              )}
+                              {photo}
+                            </button>
+                          ) : src ? (
+                            <button
+                              type="button"
+                              className="photo-btn"
+                              aria-label="Powiększ zdjęcie"
+                              onClick={() => setLightbox(src)}
+                            >
+                              {photo}
                             </button>
                           ) : (
-                            <span className="photo">
-                              {src ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={src} alt="" />
-                              ) : (
-                                <PhotoIcon />
-                              )}
-                            </span>
+                            <span className="photo">{photo}</span>
                           )}
-                          <div>
+                          <label className="stat">
+                            Serie
                             {trainer ? (
                               <input
-                                className="ex-name"
-                                aria-label="Nazwa ćwiczenia"
-                                placeholder="Nazwa ćwiczenia"
-                                value={exercise.cwiczenie}
-                                onChange={(event) => updateExercise(block.key, exercise.key, { cwiczenie: event.target.value })}
+                                className="sq"
+                                aria-label="Serie"
+                                inputMode="numeric"
+                                value={exercise.serie}
+                                onChange={(event) => updateExercise(block.key, exercise.key, { serie: event.target.value })}
                               />
                             ) : (
-                              <div className="ex-title">{exercise.cwiczenie}</div>
+                              <span className="sq-text">{exercise.serie}</span>
                             )}
-                            {exercise.done && (
-                              <div className="done-flag">
-                                <CheckIcon color="var(--green)" /> Wykonane
-                              </div>
+                          </label>
+                          <label className="stat">
+                            Reps
+                            {trainer ? (
+                              <input
+                                className="sq"
+                                aria-label="Powtórzenia"
+                                inputMode="numeric"
+                                value={exercise.reps}
+                                onChange={(event) => updateExercise(block.key, exercise.key, { reps: event.target.value })}
+                              />
+                            ) : (
+                              <span className="sq-text">{exercise.reps}</span>
                             )}
-                            {(trainer || exercise.opis.trim()) && (
-                              <button
-                                type="button"
-                                className="desc-toggle"
-                                onClick={() =>
-                                  setBlocks((prev) =>
-                                    prev.map((item) =>
-                                      item.key === block.key
-                                        ? {
-                                            ...item,
-                                            exercises: item.exercises.map((row) =>
-                                              row.key === exercise.key ? { ...row, opisOpen: !row.opisOpen } : row,
-                                            ),
-                                          }
-                                        : item,
-                                    ),
-                                  )
-                                }
-                              >
-                                <ChevronIcon dir={exercise.opisOpen ? 'up' : 'down'} />
-                                {exercise.opisOpen ? 'Zwiń opis' : 'Pokaż opis'}
-                              </button>
-                            )}
+                          </label>
+                          <div className="stat">
+                            Wykonane
+                            <button
+                              type="button"
+                              className={exercise.done ? 'sq check is-on' : 'sq check'}
+                              aria-pressed={exercise.done}
+                              aria-label={exercise.done ? 'Cofnij wykonanie' : 'Oznacz jako wykonane'}
+                              onClick={() => void toggle(block.key, exercise)}
+                            >
+                              {exercise.done ? <CheckIcon color="#fff" /> : null}
+                            </button>
                           </div>
-                          {trainer ? (
-                            <input
-                              className="metric"
-                              aria-label="Serie"
-                              inputMode="numeric"
-                              value={exercise.serie}
-                              onChange={(event) => updateExercise(block.key, exercise.key, { serie: event.target.value })}
-                            />
-                          ) : (
-                            <span className="metric-text">{exercise.serie}</span>
+                        </div>
+                        <div className="ex-foot">
+                          {(trainer || exercise.opis.trim()) && (
+                            <button
+                              type="button"
+                              className="desc-toggle"
+                              onClick={() =>
+                                setBlocks((prev) =>
+                                  prev.map((item) =>
+                                    item.key === block.key
+                                      ? {
+                                          ...item,
+                                          exercises: item.exercises.map((row) =>
+                                            row.key === exercise.key ? { ...row, opisOpen: !row.opisOpen } : row,
+                                          ),
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            >
+                              <ChevronIcon dir={exercise.opisOpen ? 'up' : 'down'} />
+                              {exercise.opisOpen ? 'Zwiń opis' : 'Pokaż opis'}
+                            </button>
                           )}
-                          {trainer ? (
-                            <input
-                              className="metric"
-                              aria-label="Powtórzenia"
-                              inputMode="numeric"
-                              value={exercise.reps}
-                              onChange={(event) => updateExercise(block.key, exercise.key, { reps: event.target.value })}
-                            />
-                          ) : (
-                            <span className="metric-text">{exercise.reps}</span>
+                          {trainer && (
+                            <button
+                              type="button"
+                              className="ex-remove"
+                              onClick={() => {
+                                touch()
+                                setBlocks((prev) =>
+                                  prev.map((item) =>
+                                    item.key === block.key
+                                      ? { ...item, exercises: item.exercises.filter((row) => row.key !== exercise.key) }
+                                      : item,
+                                  ),
+                                )
+                              }}
+                            >
+                              <TrashIcon /> Usuń
+                            </button>
                           )}
-                          <button
-                            type="button"
-                            className={exercise.done ? 'check is-on' : 'check'}
-                            aria-pressed={exercise.done}
-                            aria-label={exercise.done ? 'Cofnij wykonanie' : 'Oznacz jako wykonane'}
-                            onClick={() => void toggle(block.key, exercise)}
-                          >
-                            {exercise.done ? <CheckIcon color="#fff" /> : null}
-                          </button>
                         </div>
                         {exercise.opisOpen && (
                           <div className="ex-desc">
@@ -487,24 +550,6 @@ export function WorkoutScreen({
                               exercise.opis
                             )}
                           </div>
-                        )}
-                        {trainer && (
-                          <button
-                            type="button"
-                            className="ex-remove"
-                            onClick={() => {
-                              touch()
-                              setBlocks((prev) =>
-                                prev.map((item) =>
-                                  item.key === block.key
-                                    ? { ...item, exercises: item.exercises.filter((row) => row.key !== exercise.key) }
-                                    : item,
-                                ),
-                              )
-                            }}
-                          >
-                            Usuń
-                          </button>
                         )}
                       </article>
                     )
@@ -609,6 +654,15 @@ export function WorkoutScreen({
           setCrop({ src: URL.createObjectURL(file), key })
         }}
       />
+      {lightbox && (
+        <div className="lightbox" role="dialog" aria-modal="true" aria-label="Zdjęcie ćwiczenia" onMouseDown={() => setLightbox(null)}>
+          <button type="button" className="lightbox-close" aria-label="Zamknij" onMouseDown={(event) => event.stopPropagation()} onClick={() => setLightbox(null)}>
+            ×
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightbox} alt="" onMouseDown={(event) => event.stopPropagation()} />
+        </div>
+      )}
       {crop && (
         <CropDialog
           src={crop.src}
