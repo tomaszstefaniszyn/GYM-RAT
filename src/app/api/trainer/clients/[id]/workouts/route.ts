@@ -14,8 +14,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const client = await getClientRow(id)
   if (!client) return json({ error: 'Nie znaleziono klienta.' }, 404)
   const body = await readBody<{ name?: string }>(req)
-  const name = body?.name?.trim() ?? ''
-  if (!name) return json({ error: 'Podaj nazwę treningu.' }, 400)
+  const name = typeof body?.name === 'string' ? body.name.trim() : ''
   if (name.length > 80) return json({ error: 'Nazwa jest za długa.' }, 400)
   const workout = await createWorkout(id, name)
   return json({ id: workout.id, name: workout.name, createdAt: workout.createdAt.toISOString() })

@@ -5,7 +5,7 @@ import { json, readBody, rejectCrossSite } from '@/lib/http'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const TEXT = ['blok', 'cwiczenie', 'serie', 'reps'] as const
+const TEXT = ['cwiczenie', 'serie', 'reps', 'opis'] as const
 type Ctx = { params: Promise<{ id: string }> }
 
 export async function PATCH(req: Request, ctx: Ctx) {

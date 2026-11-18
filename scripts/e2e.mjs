@@ -1,6 +1,7 @@
 const base = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '')
 const SENTENCE =
   'Cześć, zapraszam Cię do Twojego panelu treningowego w aplikacji Gym Rat. Kliknij w poniższy link, aby otworzyć swój plan treningowy'
+const GENERIC = 'Nieprawidłowy e-mail lub hasło.'
 
 const jar = new Map()
 
@@ -11,6 +12,36 @@ function fail(message) {
 
 function assert(condition, message) {
   if (!condition) fail(message)
+}
+
+function warsawToday() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Warsaw',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const pick = (type) => parts.find((part) => part.type === type).value
+  return `${pick('year')}-${pick('month')}-${pick('day')}`
+}
+
+function addDays(iso, days) {
+  const [y, m, d] = iso.split('-').map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d + days))
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
+function formatPl(iso) {
+  const [y, m, d] = iso.split('-')
+  return `${d}.${m}.${y}`
+}
+
+function ageOn(birth, today) {
+  const [ty, tm, td] = today.split('-').map(Number)
+  const [y, m, d] = birth.split('-').map(Number)
+  let years = ty - y
+  if (tm < m || (tm === m && td < d)) years -= 1
+  return years
 }
 
 function storeCookies(res) {
@@ -50,17 +81,35 @@ async function req(path, options = {}) {
 const health = await req('/api/health')
 assert(health.status === 200 && health.data.ok === true, 'health')
 
-const bad = await req('/api/trainer/login', {
+const malformed = await req('/api/trainer/login', {
   method: 'POST',
-  body: JSON.stringify({ email: 'ktoś@example.com' }),
+  body: JSON.stringify({ email: 'nie-email', password: 'MasterSplinter' }),
 })
-assert(bad.status === 401, 'obcy e-mail odrzucony')
+assert(malformed.status === 400, 'zły format e-mail')
+
+const missingPassword = await req('/api/trainer/login', {
+  method: 'POST',
+  body: JSON.stringify({ email: 'tomaszstefaniszyn9@gmail.com' }),
+})
+assert(missingPassword.status === 400, 'brak hasła')
+
+const badPassword = await req('/api/trainer/login', {
+  method: 'POST',
+  body: JSON.stringify({ email: 'tomaszstefaniszyn9@gmail.com', password: 'zle-haslo' }),
+})
+assert(badPassword.status === 401 && badPassword.data.error === GENERIC, 'złe hasło, ogólny komunikat')
+
+const badEmail = await req('/api/trainer/login', {
+  method: 'POST',
+  body: JSON.stringify({ email: 'ktoś@example.com', password: 'MasterSplinter' }),
+})
+assert(badEmail.status === 401 && badEmail.data.error === GENERIC, 'obcy e-mail, ten sam komunikat')
 
 const good = await req('/api/trainer/login', {
   method: 'POST',
-  body: JSON.stringify({ email: 'Czulosc.Joga@gmail.com' }),
+  body: JSON.stringify({ email: 'Czulosc.Joga@gmail.com', password: 'MasterSplinter' }),
 })
-assert(good.status === 200, 'drugi adres z allowlisty')
+assert(good.status === 200, 'drugi adres z allowlisty i hasło')
 
 const created = await req('/api/trainer/clients', {
   method: 'POST',
@@ -79,42 +128,91 @@ assert(home.status === 200 && home.data.workouts.length === 0, 'pusty panel klie
 
 const plan = await req(`/api/trainer/clients/${clientId}/workouts`, {
   method: 'POST',
-  body: JSON.stringify({ name: 'Trening A' }),
+  body: JSON.stringify({}),
 })
-assert(plan.status === 200, 'nowy trening')
+assert(plan.status === 200 && plan.data.name === 'Trening A', 'nowy trening dostaje nazwę')
+const workout = await req(`/api/trainer/workouts/${plan.data.id}`)
+assert(workout.status === 200, 'odczyt treningu')
+assert(workout.data.blocks.length === 1 && workout.data.blocks[0].name === 'Rozgrzewka', 'domyślny blok Rozgrzewka')
+assert(workout.data.blocks[0].exercises.length === 0, 'pusty blok')
 
-const exercise = await req(`/api/trainer/workouts/${plan.data.id}/exercises`, {
-  method: 'POST',
-  body: '{}',
+const png = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+)
+const saved = await req(`/api/trainer/workouts/${plan.data.id}`, {
+  method: 'PUT',
+  body: JSON.stringify({
+    name: 'Trening A',
+    blocks: [
+      {
+        id: workout.data.blocks[0].id,
+        name: 'Rozgrzewka',
+        exercises: [
+          {
+            cwiczenie: 'Przysiad\nwolno',
+            serie: '4',
+            reps: '8',
+            opis: 'Plecy prosto',
+            done: false,
+            image: { data: png.toString('base64'), mime: 'image/png' },
+          },
+        ],
+      },
+      { name: 'Siła', exercises: [] },
+    ],
+  }),
 })
-assert(exercise.status === 200, 'nowe ćwiczenie')
-
-const saved = await req(`/api/trainer/exercises/${exercise.data.id}`, {
-  method: 'PATCH',
-  body: JSON.stringify({ blok: 'Główne', cwiczenie: 'Przysiad\nwolno', serie: '4', reps: '8' }),
-})
-assert(saved.status === 200 && saved.data.cwiczenie.includes('wolno'), 'zapis pól')
+assert(saved.status === 200 && saved.data.blocks.length === 2, `zapis planu ${saved.status} ${JSON.stringify(saved.data)}`)
+assert(saved.data.blocks[0].exercises[0].cwiczenie.includes('wolno'), 'zapis nazwy')
+assert(saved.data.blocks[0].exercises[0].opis === 'Plecy prosto', 'zapis opisu')
+assert(saved.data.blocks[0].exercises[0].hasImage === true, 'zdjęcie ćwiczenia')
+assert(saved.data.blocks[1].name === 'Siła', 'nowy blok')
+const exerciseId = saved.data.blocks[0].exercises[0].id
 
 const seen = await req(`/api/client/${token}/workouts/${plan.data.id}`)
-assert(seen.status === 200 && seen.data.exercises[0].cwiczenie.includes('wolno'), 'klient widzi edycję trenera')
+assert(seen.status === 200 && seen.data.blocks[0].exercises[0].opis === 'Plecy prosto', 'klient widzi plan')
+const image = await fetch(`${base}/api/client/${token}/exercises/${exerciseId}/image`)
+assert(image.status === 200 && (image.headers.get('content-type') || '').includes('image'), 'klient widzi zdjęcie')
 
-const toggled = await req(`/api/client/${token}/exercises/${exercise.data.id}`, {
+const forbiddenEdit = await req(`/api/client/${token}/exercises/${exerciseId}`, {
   method: 'PATCH',
   body: JSON.stringify({ done: true, cwiczenie: 'HACKED' }),
 })
+assert(forbiddenEdit.status === 403, 'klient nie może zmienić treści')
+const unchanged = await req(`/api/client/${token}/workouts/${plan.data.id}`)
+assert(unchanged.data.blocks[0].exercises[0].cwiczenie.includes('wolno'), 'treść bez zmian po 403')
+assert(unchanged.data.blocks[0].exercises[0].done === false, 'checkbox nie zapisany przy 403')
+
+const toggled = await req(`/api/client/${token}/exercises/${exerciseId}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ done: true }),
+})
 assert(toggled.status === 200 && toggled.data.done === true, 'klient odhacza')
-assert(toggled.data.cwiczenie.includes('wolno'), 'klient nie zmienia treści')
-
 const trainerView = await req(`/api/trainer/workouts/${plan.data.id}`)
-assert(trainerView.data.exercises[0].done === true, 'trener widzi wspólny checkbox')
+assert(trainerView.data.blocks[0].exercises[0].done === true, 'trener widzi wspólny checkbox')
 
-const cleared = await req(`/api/trainer/exercises/${exercise.data.id}`, {
+const cleared = await req(`/api/trainer/exercises/${exerciseId}`, {
   method: 'PATCH',
   body: JSON.stringify({ done: false }),
 })
 assert(cleared.data.done === false, 'trener cofa checkbox')
 const clientAgain = await req(`/api/client/${token}/workouts/${plan.data.id}`)
-assert(clientAgain.data.exercises[0].done === false, 'klient widzi cofnięcie')
+assert(clientAgain.data.blocks[0].exercises[0].done === false, 'klient widzi cofnięcie')
+
+for (const [method, path] of [
+  ['POST', `/api/client/${token}/workouts`],
+  ['POST', `/api/client/${token}/workouts/${plan.data.id}/blocks`],
+  ['POST', `/api/client/${token}/workouts/${plan.data.id}/exercises`],
+  ['PUT', `/api/client/${token}/workouts/${plan.data.id}`],
+  ['DELETE', `/api/client/${token}/workouts/${plan.data.id}`],
+  ['DELETE', `/api/client/${token}/blocks/${saved.data.blocks[0].id}`],
+  ['DELETE', `/api/client/${token}/exercises/${exerciseId}`],
+  ['POST', `/api/client/${token}/exercises/${exerciseId}/image`],
+]) {
+  const denied = await req(path, { method, body: method === 'DELETE' ? undefined : '{}' })
+  assert(denied.status === 403, `${method} ${path} ma dać 403, jest ${denied.status}`)
+}
 
 const other = await req('/api/trainer/clients', {
   method: 'POST',
@@ -123,11 +221,83 @@ const other = await req('/api/trainer/clients', {
 const otherToken = other.data.inviteUrl.split('/c/')[1]
 const foreign = await req(`/api/client/${otherToken}/workouts/${plan.data.id}`)
 assert(foreign.status === 404, 'cudzy trening jest niedostępny')
+const foreignToggle = await req(`/api/client/${otherToken}/exercises/${exerciseId}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ done: true }),
+})
+assert(foreignToggle.status === 404, 'cudze ćwiczenie jest niedostępne')
 
-const png = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-  'base64',
-)
+const today = warsawToday()
+const profileBody = {
+  name: 'Ania',
+  birthDate: '1990-05-15',
+  weightKg: 75.5,
+  heightCm: 180,
+  level: 'Średniozaawansowany',
+  passType: '4',
+  trainingStart: today,
+  passUsed: [true, false, false, false],
+  goal: 'Siła',
+  injuries: 'brak',
+}
+const profile = await req(`/api/trainer/clients/${clientId}/profile`, {
+  method: 'PATCH',
+  body: JSON.stringify(profileBody),
+})
+assert(profile.status === 200, `zapis profilu ${profile.status} ${JSON.stringify(profile.data)}`)
+assert(profile.data.age === ageOn('1990-05-15', today), 'wiek liczony, nie zapisany na sztywno')
+assert(profile.data.pass.kind === 'active' && profile.data.pass.remaining === 30, 'karnet 4: 30 dni w dniu startu')
+assert(profile.data.pass.validUntil === formatPl(addDays(today, 30)), 'termin ważności +30 dni')
+assert(profile.data.passUsed.filter(Boolean).length === 1 && profile.data.passUsed.length === 4, '1 z 4 wejść')
+assert(profile.data.weightKg === 75.5, 'waga')
+
+const clientProfile = await req(`/api/client/${token}/profile`)
+assert(clientProfile.status === 200 && clientProfile.data.goal === 'Siła', 'klient widzi profil trenera')
+const clientEdit = await req(`/api/client/${token}/profile`, {
+  method: 'PATCH',
+  body: JSON.stringify({ ...profileBody, goal: 'Wytrzymałość', injuries: 'kolano' }),
+})
+assert(clientEdit.status === 200 && clientEdit.data.goal === 'Wytrzymałość', 'klient zapisuje swój profil')
+const trainerSees = await req(`/api/trainer/clients/${clientId}/profile`)
+assert(trainerSees.data.goal === 'Wytrzymałość' && trainerSees.data.injuries === 'kolano', 'trener widzi zapis klienta')
+
+const badWeight = await req(`/api/client/${token}/profile`, {
+  method: 'PATCH',
+  body: JSON.stringify({ ...profileBody, weightKg: -5 }),
+})
+assert(badWeight.status === 400, 'ujemna waga odrzucona')
+
+const pass8 = await req(`/api/trainer/clients/${clientId}/profile`, {
+  method: 'PATCH',
+  body: JSON.stringify({ ...profileBody, passType: '8', passUsed: [true, false, false, false] }),
+})
+assert(pass8.data.pass.remaining === 40 && pass8.data.pass.validUntil === formatPl(addDays(today, 40)), 'karnet 8: 40 dni')
+assert(pass8.data.passUsed.length === 8 && pass8.data.passUsed[0] === true, 'wejścia rozszerzone do 8')
+
+const single = await req(`/api/trainer/clients/${clientId}/profile`, {
+  method: 'PATCH',
+  body: JSON.stringify({ ...profileBody, passType: '1', passUsed: [true] }),
+})
+assert(single.data.pass.kind === 'hidden' && single.data.passUsed.length === 1, 'jednorazowe bez licznika dni')
+
+const future = await req(`/api/trainer/clients/${clientId}/profile`, {
+  method: 'PATCH',
+  body: JSON.stringify({ ...profileBody, passType: '4', trainingStart: addDays(today, 3) }),
+})
+assert(future.data.pass.kind === 'future', 'karnet w przyszłości')
+
+const expired = await req(`/api/trainer/clients/${clientId}/profile`, {
+  method: 'PATCH',
+  body: JSON.stringify({ ...profileBody, passType: '4', trainingStart: '2020-01-01' }),
+})
+assert(expired.data.pass.kind === 'expired' && expired.data.pass.remaining === 0, 'karnet wygasły, zero dni')
+
+const noDate = await req(`/api/trainer/clients/${clientId}/profile`, {
+  method: 'PATCH',
+  body: JSON.stringify({ ...profileBody, passType: '4', trainingStart: '' }),
+})
+assert(noDate.data.pass.kind === 'hidden', 'brak daty ukrywa licznik')
+
 const form = new FormData()
 form.append('file', new Blob([png], { type: 'image/png' }), 'a.png')
 const uploaded = await fetch(`${base}/api/trainer/clients/${clientId}/avatar`, {
@@ -136,8 +306,12 @@ const uploaded = await fetch(`${base}/api/trainer/clients/${clientId}/avatar`, {
   body: form,
 })
 assert(uploaded.status === 200, `avatar ${uploaded.status}`)
-const image = await fetch(`${base}/api/trainer/clients/${clientId}/avatar`, { headers: { cookie: cookieHeader() } })
-assert(image.status === 200 && (image.headers.get('content-type') || '').includes('image'), 'odczyt avatara')
+const avatar = await fetch(`${base}/api/client/${token}/avatar`)
+assert(avatar.status === 200 && (avatar.headers.get('content-type') || '').includes('image'), 'klient czyta swój avatar')
+const removedAvatar = await req(`/api/client/${token}/avatar`, { method: 'DELETE' })
+assert(removedAvatar.status === 200, 'klient usuwa avatar')
+const avatarGone = await fetch(`${base}/api/client/${token}/avatar`)
+assert(avatarGone.status === 404, 'avatara już nie ma')
 
 const session = await fetch(`${base}/api/client/session`, {
   method: 'POST',
@@ -149,7 +323,9 @@ assert(session.status === 200 && setCookie.includes('gr_client'), 'sesja klienta
 const me = await fetch(`${base}/api/client/me`, { headers: { cookie: setCookie.split(';')[0] } })
 assert(me.status === 200, 'panel pamięta ciasteczko')
 
-await req(`/api/trainer/exercises/${exercise.data.id}`, { method: 'DELETE' })
+const lockedProfile = await fetch(`${base}/api/trainer/clients/${clientId}/profile`, { method: 'PATCH' })
+assert(lockedProfile.status === 401, 'profil trenera wymaga sesji')
+
 await req(`/api/trainer/workouts/${plan.data.id}`, { method: 'DELETE' })
 const removed = await req(`/api/trainer/clients/${clientId}`, { method: 'DELETE' })
 assert(removed.status === 200, 'usunięcie klienta')

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ApiError, api } from '@/lib/api-client'
 import type { ClientHomeDTO } from '@/lib/types'
 import { usePoll } from '@/lib/use-poll'
-import { Logo } from './mark'
+import { ArrowIcon, DumbbellIcon, Logo, PersonIcon } from './mark'
 
 const STORAGE_KEY = 'gr_client_token'
 
@@ -55,18 +55,48 @@ export function ClientHome({ token, initial }: { token: string; initial: ClientH
 
   return (
     <>
-      <header className="home-brand">
-        <Logo size={62} />
-        <div className="home-title">GYM RAT</div>
+      <header className="home-top">
+        <div className="brand">
+          <Logo size={56} />
+          <div className="wordmark">
+            <b>GYM</b> RAT
+          </div>
+        </div>
+        <Link href={`/c/${token}/profil`} className="profile-link">
+          <span className="profile-ico">
+            <PersonIcon />
+          </span>
+          Mój profil
+        </Link>
       </header>
+      <p className="eyebrow">DOBRZE CIĘ WIDZIEĆ</p>
+      <h1 className="hero">
+        Czas na trening<span className="dot">.</span>
+      </h1>
+      <h2 className="section-title">Twój plan</h2>
       {home.workouts.length === 0 ? (
-        <p className="empty">Trener nie dodał jeszcze treningów.</p>
+        <div className="empty-card">
+          <strong>Brak treningu</strong>
+          Gdy trener doda plan, zobaczysz go w tym miejscu.
+        </div>
       ) : (
-        <div className="pills home-pills">
+        <div className="plan-cards">
           {home.workouts.map((workout) => (
-            <Link key={workout.id} className="pill" href={`/c/${token}/trening/${workout.id}`}>
-              {workout.name}
-            </Link>
+            <article key={workout.id} className="plan-card">
+              <div className="plan-card-head">
+                <span className="dumbbell">
+                  <DumbbellIcon />
+                </span>
+                <div>
+                  <div className="plan-name">{workout.name}</div>
+                  <div className="plan-sub">Plan od Twojego trenera</div>
+                </div>
+              </div>
+              <Link className="btn-black" href={`/c/${token}/trening/${workout.id}`}>
+                Otwórz trening
+                <ArrowIcon />
+              </Link>
+            </article>
           ))}
         </div>
       )}
@@ -99,9 +129,11 @@ export function OpenInvite() {
 
   return (
     <div className="message-page">
-      <div className="home-brand">
-        <Logo size={62} />
-        <div className="home-title">GYM RAT</div>
+      <div className="brand">
+        <Logo size={56} />
+        <div className="wordmark">
+          <b>GYM</b> RAT
+        </div>
       </div>
       <p>{checking ? 'Otwieram plan…' : 'Otwórz link z wiadomości e-mail, aby wejść do swojego planu.'}</p>
     </div>
@@ -111,9 +143,11 @@ export function OpenInvite() {
 export function InvalidLink() {
   return (
     <div className="message-page">
-      <div className="home-brand">
-        <Logo size={62} />
-        <div className="home-title">GYM RAT</div>
+      <div className="brand">
+        <Logo size={56} />
+        <div className="wordmark">
+          <b>GYM</b> RAT
+        </div>
       </div>
       <p>Ten link nie pasuje do żadnego konta.</p>
     </div>

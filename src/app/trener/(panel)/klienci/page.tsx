@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 export default async function ClientsPage() {
   const clients = await listClients()
   return (
-    <main className="shell">
+    <main className="shell flex-page">
       <ClientsScreen initial={clients} />
     </main>
   )

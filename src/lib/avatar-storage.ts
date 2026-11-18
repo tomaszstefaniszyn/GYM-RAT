@@ -28,13 +28,12 @@ function extension(mime: string) {
   return 'jpg'
 }
 
-export async function storeAvatar(clientId: string, bytes: Buffer, mime: string) {
+export async function storeBinary(objectPath: string, bytes: Buffer, mime: string) {
   const cfg = supabaseStorageConfig()
   if (!cfg) {
-    return { avatarData: bytes.toString('base64'), avatarMime: mime, avatarPath: null as string | null }
+    return { data: bytes.toString('base64'), mime, path: null as string | null }
   }
-  const path = `clients/${clientId}.${extension(mime)}`
-  const res = await fetch(`${cfg.url}/storage/v1/object/${cfg.bucket}/${path}`, {
+  const res = await fetch(`${cfg.url}/storage/v1/object/${cfg.bucket}/${objectPath}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${cfg.key}`,
@@ -47,7 +46,32 @@ export async function storeAvatar(clientId: string, bytes: Buffer, mime: string)
     const detail = await res.text()
     throw new Error(`Supabase Storage: ${res.status} ${detail.slice(0, 300)}`)
   }
-  return { avatarData: null as string | null, avatarMime: mime, avatarPath: path }
+  return { data: null as string | null, mime, path: objectPath }
+}
+
+export async function storeAvatar(clientId: string, bytes: Buffer, mime: string) {
+  const stored = await storeBinary(`clients/${clientId}.${extension(mime)}`, bytes, mime)
+  return { avatarData: stored.data, avatarMime: stored.mime, avatarPath: stored.path }
+}
+
+export async function storeExerciseImage(exerciseId: string, bytes: Buffer, mime: string) {
+  const stored = await storeBinary(`exercises/${exerciseId}.${extension(mime)}`, bytes, mime)
+  return { imageData: stored.data, imageMime: stored.mime, imagePath: stored.path }
+}
+
+export async function readStoredBinary(file: { data: string | null; mime: string | null; path: string | null }) {
+  if (file.path) {
+    const cfg = supabaseStorageConfig()
+    if (!cfg) return null
+    const res = await fetch(`${cfg.url}/storage/v1/object/${cfg.bucket}/${file.path}`, {
+      headers: { Authorization: `Bearer ${cfg.key}` },
+    })
+    if (!res.ok) return null
+    const bytes = Buffer.from(await res.arrayBuffer())
+    return { bytes, mime: file.mime || res.headers.get('content-type') || 'image/jpeg' }
+  }
+  if (file.data) return { bytes: Buffer.from(file.data, 'base64'), mime: file.mime || 'image/jpeg' }
+  return null
 }
 
 export async function readStoredAvatar(client: {
@@ -55,28 +79,27 @@ export async function readStoredAvatar(client: {
   avatarMime: string | null
   avatarPath: string | null
 }) {
-  if (client.avatarPath) {
-    const cfg = supabaseStorageConfig()
-    if (!cfg) return null
-    const res = await fetch(`${cfg.url}/storage/v1/object/${cfg.bucket}/${client.avatarPath}`, {
-      headers: { Authorization: `Bearer ${cfg.key}` },
-    })
-    if (!res.ok) return null
-    const bytes = Buffer.from(await res.arrayBuffer())
-    return { bytes, mime: client.avatarMime || res.headers.get('content-type') || 'image/jpeg' }
-  }
-  if (client.avatarData) {
-    return { bytes: Buffer.from(client.avatarData, 'base64'), mime: client.avatarMime || 'image/jpeg' }
-  }
-  return null
+  return readStoredBinary({ data: client.avatarData, mime: client.avatarMime, path: client.avatarPath })
 }
 
-export async function deleteStoredAvatar(avatarPath: string | null) {
-  if (!avatarPath) return
+export async function readStoredExercise(row: {
+  imageData: string | null
+  imageMime: string | null
+  imagePath: string | null
+}) {
+  return readStoredBinary({ data: row.imageData, mime: row.imageMime, path: row.imagePath })
+}
+
+export async function deleteStoredImage(objectPath: string | null) {
+  if (!objectPath) return
   const cfg = supabaseStorageConfig()
   if (!cfg) return
-  await fetch(`${cfg.url}/storage/v1/object/${cfg.bucket}/${avatarPath}`, {
+  await fetch(`${cfg.url}/storage/v1/object/${cfg.bucket}/${objectPath}`, {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${cfg.key}` },
   }).catch(() => undefined)
+}
+
+export async function deleteStoredAvatar(avatarPath: string | null) {
+  return deleteStoredImage(avatarPath)
 }

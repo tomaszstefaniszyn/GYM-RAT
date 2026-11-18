@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { closeDb, getDb } from '../src/lib/db'
-import { clients, exercises, workouts } from '../src/lib/schema'
+import { blocks, clients, exercises, workouts } from '../src/lib/schema'
 
 function at(day: string) {
   return new Date(`${day}T12:00:00.000Z`)
@@ -130,20 +130,38 @@ async function main() {
         position: plan.position,
         createdAt: plan.createdAt,
       })
-      let index = 0
+      const order: string[] = []
+      const groups = new Map<string, Array<(typeof plan.rows)[number]>>()
       for (const row of plan.rows) {
-        await db.insert(exercises).values({
-          id: crypto.randomUUID(),
-          workoutId,
-          blok: row.blok,
-          cwiczenie: row.cwiczenie,
-          serie: row.serie,
-          reps: row.reps,
-          done: row.done,
-          position: index,
-          updatedAt: plan.createdAt,
-        })
-        index += 1
+        const name = row.blok.trim() || 'Blok'
+        if (!groups.has(name)) {
+          groups.set(name, [])
+          order.push(name)
+        }
+        groups.get(name)!.push(row)
+      }
+      let blockPosition = 0
+      for (const name of order) {
+        const blockId = crypto.randomUUID()
+        await db.insert(blocks).values({ id: blockId, workoutId, name, position: blockPosition })
+        blockPosition += 1
+        let index = 0
+        for (const row of groups.get(name)!) {
+          await db.insert(exercises).values({
+            id: crypto.randomUUID(),
+            workoutId,
+            blockId,
+            blok: row.blok,
+            cwiczenie: row.cwiczenie,
+            serie: row.serie,
+            reps: row.reps,
+            opis: '',
+            done: row.done,
+            position: index,
+            updatedAt: plan.createdAt,
+          })
+          index += 1
+        }
       }
     }
   }

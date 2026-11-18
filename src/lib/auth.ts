@@ -2,6 +2,7 @@ import 'server-only'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 import { isAllowedTrainerEmail, sessionSecret } from './config'
+import { trainerPasswordOk } from './password'
 
 export const TRAINER_COOKIE = 'gr_trainer'
 export const CLIENT_COOKIE = 'gr_client'
@@ -63,22 +64,23 @@ export async function getTrainerSession() {
   return readTrainerToken(jar.get(TRAINER_COOKIE)?.value)
 }
 
+export const TRAINER_LOGIN_ERROR = 'Nieprawidłowy e-mail lub hasło.'
+
 /**
- * Passwordless trainer login, as requested: allowlisted email, no password.
- * Split on purpose so a one-time emailed code can be inserted later:
- *   1. requestTrainerLogin — checks the allowlist (this function)
- *   2. issueLoginCode — create a short-lived code and email it (not built)
- *   3. verifyLoginCode — only then call createTrainerSession
- * Today step 1 creates the session immediately.
+ * Trainer login: allowlisted email AND server-side password.
+ * Both checks run for a well-formed address so the error stays generic.
  */
-export async function requestTrainerLogin(email: string): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function requestTrainerLogin(
+  email: string,
+  password: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const normalized = email.trim().toLowerCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
     return { ok: false, error: 'Podaj prawidłowy adres e-mail.' }
   }
-  if (!isAllowedTrainerEmail(normalized)) {
-    return { ok: false, error: 'Ten adres nie ma dostępu do panelu trenera.' }
-  }
+  const passwordOk = trainerPasswordOk(password)
+  const emailOk = isAllowedTrainerEmail(normalized)
+  if (!passwordOk || !emailOk) return { ok: false, error: TRAINER_LOGIN_ERROR }
   await createTrainerSession(normalized)
   return { ok: true }
 }

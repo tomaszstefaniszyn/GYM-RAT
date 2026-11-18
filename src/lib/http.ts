@@ -7,6 +7,10 @@ export function json(data: unknown, status = 200) {
   })
 }
 
+export function forbidden() {
+  return json({ error: 'Brak uprawnień.' }, 403)
+}
+
 export async function readBody<T>(req: Request): Promise<T | null> {
   try {
     return (await req.json()) as T

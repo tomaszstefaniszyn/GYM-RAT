@@ -4,109 +4,87 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api-client'
-import type { ExerciseDTO, WorkoutDTO } from '@/lib/types'
+import type { WorkoutDTO } from '@/lib/types'
 import { usePoll } from '@/lib/use-poll'
-import { BackIcon, GreenX, Logo, PlusIcon } from './mark'
+import { CropDialog } from './crop-dialog'
+import { BackIcon, CheckIcon, ChevronIcon, DotsIcon, Logo, PhotoIcon } from './mark'
 
-const FIELDS = ['blok', 'cwiczenie', 'serie', 'reps'] as const
-type Field = (typeof FIELDS)[number]
-
-const LABELS: Record<Field, string> = {
-  blok: 'Blok',
-  cwiczenie: 'Ćwiczenie',
-  serie: 'Serie',
-  reps: 'Reps',
+type DraftExercise = {
+  key: string
+  id?: string
+  cwiczenie: string
+  serie: string
+  reps: string
+  opis: string
+  done: boolean
+  hasImage: boolean
+  updatedAt: string
+  imageFile?: Blob | null
+  previewUrl?: string
+  opisOpen: boolean
 }
 
-function mergeRows(prev: ExerciseDTO[], next: ExerciseDTO[], focusedKey: string | null, pending: Set<string>) {
-  return next.map((server) => {
-    const local = prev.find((row) => row.id === server.id)
-    if (!local) return server
-    const merged = { ...server }
-    if (pending.has(server.id)) merged.done = local.done
-    for (const field of FIELDS) {
-      if (focusedKey === `${server.id}:${field}`) merged[field] = local[field]
+type DraftBlock = {
+  key: string
+  id?: string
+  name: string
+  open: boolean
+  exercises: DraftExercise[]
+}
+
+function fromWorkout(workout: WorkoutDTO, prev: DraftBlock[] = [], pending?: Set<string>): DraftBlock[] {
+  return workout.blocks.map((block) => {
+    const old = prev.find((item) => item.id === block.id)
+    return {
+      key: block.id,
+      id: block.id,
+      name: block.name,
+      open: old?.open ?? false,
+      exercises: block.exercises.map((exercise) => {
+        const oldEx = old?.exercises.find((item) => item.id === exercise.id)
+        const keepDone = pending?.has(exercise.id) && oldEx
+        return {
+          key: exercise.id,
+          id: exercise.id,
+          cwiczenie: exercise.cwiczenie,
+          serie: exercise.serie,
+          reps: exercise.reps,
+          opis: exercise.opis,
+          done: keepDone ? oldEx.done : exercise.done,
+          hasImage: exercise.hasImage,
+          updatedAt: exercise.updatedAt,
+          opisOpen: oldEx?.opisOpen ?? false,
+        }
+      }),
     }
-    return merged
   })
 }
 
-function Cell({
-  row,
-  field,
-  readOnly,
-  onChange,
-  onFocusKey,
-  onBlur,
-}: {
-  row: ExerciseDTO
-  field: Field
-  readOnly: boolean
-  onChange: (value: string) => void
-  onFocusKey: () => void
-  onBlur: (value: string) => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const ref = useRef<HTMLTextAreaElement>(null)
-  const value = row[field]
-  const center = field === 'serie' || field === 'reps'
-
-  useEffect(() => {
-    if (!editing) return
-    const el = ref.current
-    if (!el) return
-    el.focus()
-    const length = el.value.length
-    el.setSelectionRange(length, length)
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [editing])
-
-  if (readOnly || !editing) {
-    return (
-      <div
-        className={`cell-text${center ? ' center' : ''}`}
-        role={readOnly ? undefined : 'textbox'}
-        tabIndex={readOnly ? undefined : 0}
-        aria-label={LABELS[field]}
-        onClick={() => {
-          if (readOnly) return
-          onFocusKey()
-          setEditing(true)
-        }}
-        onKeyDown={(event) => {
-          if (readOnly) return
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            onFocusKey()
-            setEditing(true)
-          }
-        }}
-      >
-        {value}
-      </div>
-    )
+function mergeDone(local: DraftBlock[], server: WorkoutDTO, pending: Set<string>) {
+  const doneById = new Map<string, boolean>()
+  for (const block of server.blocks) {
+    for (const exercise of block.exercises) doneById.set(exercise.id, exercise.done)
   }
+  return local.map((block) => ({
+    ...block,
+    exercises: block.exercises.map((exercise) => {
+      if (!exercise.id || pending.has(exercise.id) || !doneById.has(exercise.id)) return exercise
+      return { ...exercise, done: doneById.get(exercise.id) ?? exercise.done }
+    }),
+  }))
+}
 
-  return (
-    <textarea
-      ref={ref}
-      className={`cell-text${center ? ' center' : ''}`}
-      aria-label={LABELS[field]}
-      value={value}
-      rows={1}
-      onChange={(event) => {
-        const next = event.target.value
-        event.target.style.height = 'auto'
-        event.target.style.height = `${event.target.scrollHeight}px`
-        onChange(next)
-      }}
-      onBlur={(event) => {
-        setEditing(false)
-        onBlur(event.target.value)
-      }}
-    />
-  )
+function blobToBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result || '')
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : result)
+    }
+    reader.onerror = () => reject(new Error('file'))
+    reader.readAsDataURL(blob)
+  })
 }
 
 export function WorkoutScreen({
@@ -114,96 +92,142 @@ export function WorkoutScreen({
   initial,
   reloadUrl,
   backHref,
-  exerciseBase,
-  addUrl,
+  saveUrl,
   deleteUrl,
+  toggleBase,
+  imageBase,
 }: {
   mode: 'trainer' | 'client'
   initial: WorkoutDTO
   reloadUrl: string
   backHref: string
-  exerciseBase: string
-  addUrl?: string
+  saveUrl?: string
   deleteUrl?: string
+  toggleBase: string
+  imageBase: string
 }) {
   const router = useRouter()
+  const trainer = mode === 'trainer'
   const [name, setName] = useState(initial.name)
-  const [rows, setRows] = useState(initial.exercises)
+  const [blocks, setBlocks] = useState<DraftBlock[]>(() => fromWorkout(initial))
   const [error, setError] = useState<string | null>(null)
-  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [menuKey, setMenuKey] = useState<string | null>(null)
+  const [confirmBlock, setConfirmBlock] = useState<string | null>(null)
   const [confirmWorkout, setConfirmWorkout] = useState(false)
-  const focused = useRef<string | null>(null)
+  const [focusKey, setFocusKey] = useState<string | null>(null)
+  const [crop, setCrop] = useState<{ src: string; key: string } | null>(null)
+  const dirty = useRef(false)
   const pending = useRef(new Set<string>())
-  const timers = useRef(new Map<string, number>())
-  const revision = useRef(0)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const pickKey = useRef<string | null>(null)
+
+  useEffect(() => {
+    const onLeave = (event: BeforeUnloadEvent) => {
+      if (!dirty.current) return
+      event.preventDefault()
+    }
+    window.addEventListener('beforeunload', onLeave)
+    return () => window.removeEventListener('beforeunload', onLeave)
+  }, [])
 
   usePoll(async () => {
-    const ticket = revision.current
     const data = await api<WorkoutDTO>(reloadUrl)
-    if (ticket !== revision.current) return
+    if (dirty.current) {
+      setBlocks((prev) => mergeDone(prev, data, pending.current))
+      return
+    }
     setName(data.name)
-    setRows((prev) => mergeRows(prev, data.exercises, focused.current, pending.current))
+    setBlocks((prev) => fromWorkout(data, prev, pending.current))
   }, 2500)
 
-  function schedule(id: string, field: Field, value: string) {
-    const key = `${id}:${field}`
-    const existing = timers.current.get(key)
-    if (existing) window.clearTimeout(existing)
-    timers.current.set(
-      key,
-      window.setTimeout(() => {
-        void save(id, field, value)
-      }, 450),
+  function touch() {
+    dirty.current = true
+  }
+
+  function updateBlock(key: string, patch: Partial<DraftBlock>) {
+    touch()
+    setBlocks((prev) => prev.map((block) => (block.key === key ? { ...block, ...patch } : block)))
+  }
+
+  function updateExercise(blockKey: string, exerciseKey: string, patch: Partial<DraftExercise>) {
+    touch()
+    setBlocks((prev) =>
+      prev.map((block) =>
+        block.key === blockKey
+          ? { ...block, exercises: block.exercises.map((exercise) => (exercise.key === exerciseKey ? { ...exercise, ...patch } : exercise)) }
+          : block,
+      ),
     )
   }
 
-  async function save(id: string, field: Field, value: string) {
-    if (mode !== 'trainer') return
-    timers.current.delete(`${id}:${field}`)
+  async function toggle(blockKey: string, exercise: DraftExercise) {
+    const next = !exercise.done
+    setBlocks((prev) =>
+      prev.map((block) =>
+        block.key === blockKey
+          ? { ...block, exercises: block.exercises.map((item) => (item.key === exercise.key ? { ...item, done: next } : item)) }
+          : block,
+      ),
+    )
+    if (!exercise.id) return
+    pending.current.add(exercise.id)
     try {
-      await api(`${exerciseBase}/${id}`, { method: 'PATCH', body: JSON.stringify({ [field]: value }) })
+      await api(`${toggleBase}/${exercise.id}`, { method: 'PATCH', body: JSON.stringify({ done: next }) })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nie zapisano.')
-    }
-  }
-
-  async function toggle(row: ExerciseDTO) {
-    const next = !row.done
-    pending.current.add(row.id)
-    setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, done: next } : item)))
-    try {
-      await api(`${exerciseBase}/${row.id}`, { method: 'PATCH', body: JSON.stringify({ done: next }) })
-    } catch (err) {
-      setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, done: !next } : item)))
+      setBlocks((prev) =>
+        prev.map((block) =>
+          block.key === blockKey
+            ? { ...block, exercises: block.exercises.map((item) => (item.key === exercise.key ? { ...item, done: !next } : item)) }
+            : block,
+        ),
+      )
       setError(err instanceof Error ? err.message : 'Nie zapisano.')
     } finally {
-      pending.current.delete(row.id)
+      pending.current.delete(exercise.id)
     }
   }
 
-  async function addExercise() {
-    if (!addUrl) return
-    revision.current += 1
+  async function save() {
+    if (!saveUrl) return
+    setBusy(true)
+    setError(null)
     try {
-      const created = await api<ExerciseDTO>(addUrl, { method: 'POST', body: '{}' })
-      setRows((prev) => (prev.some((row) => row.id === created.id) ? prev : [...prev, created]))
-      window.setTimeout(() => {
-        document.getElementById(`${created.id}-cwiczenie`)?.scrollIntoView({ block: 'nearest' })
-      }, 30)
+      const payload = {
+        name,
+        blocks: await Promise.all(
+          blocks.map(async (block) => ({
+            id: block.id,
+            name: block.name,
+            exercises: await Promise.all(
+              block.exercises.map(async (exercise) => {
+                const item: Record<string, unknown> = {
+                  id: exercise.id,
+                  cwiczenie: exercise.cwiczenie,
+                  serie: exercise.serie,
+                  reps: exercise.reps,
+                  opis: exercise.opis,
+                }
+                if (!exercise.id) item.done = exercise.done
+                if (exercise.imageFile === null) item.image = null
+                else if (exercise.imageFile) item.image = { data: await blobToBase64(exercise.imageFile), mime: 'image/jpeg' }
+                return item
+              }),
+            ),
+          })),
+        ),
+      }
+      const saved = await api<WorkoutDTO>(saveUrl, { method: 'PUT', body: JSON.stringify(payload) })
+      dirty.current = false
+      setName(saved.name)
+      setBlocks((prev) => fromWorkout(saved, prev))
+      setToast('Plan zapisany')
+      window.setTimeout(() => setToast(null), 2200)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nie dodano ćwiczenia.')
-    }
-  }
-
-  async function removeRow(id: string) {
-    if (mode !== 'trainer') return
-    revision.current += 1
-    try {
-      await api(`${exerciseBase}/${id}`, { method: 'DELETE' })
-      setRows((prev) => prev.filter((row) => row.id !== id))
-      setConfirmId(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nie usunięto wiersza.')
+      setError(err instanceof Error ? err.message : 'Nie zapisano planu.')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -211,6 +235,7 @@ export function WorkoutScreen({
     if (!deleteUrl) return
     try {
       await api(deleteUrl, { method: 'DELETE' })
+      dirty.current = false
       router.push(backHref)
       router.refresh()
     } catch (err) {
@@ -220,160 +245,327 @@ export function WorkoutScreen({
 
   return (
     <>
-      <header className="topbar center">
+      <header className="topbar">
         <Link href={backHref} className="icon-btn" aria-label="Wróć">
           <BackIcon />
         </Link>
-        <h1>{name}</h1>
-        <Logo size={34} />
+        {trainer ? (
+          <input
+            className="title-input"
+            aria-label="Nazwa treningu"
+            value={name}
+            maxLength={80}
+            onChange={(event) => {
+              touch()
+              setName(event.target.value)
+            }}
+          />
+        ) : (
+          <h1 className="title-input" style={{ textAlign: 'center' }}>
+            {name}
+          </h1>
+        )}
+        <Logo size={40} />
       </header>
-      {mode === 'trainer' && (
-        <div className="add-row">
-          <span>Dodaj ćwiczenie</span>
-          <button type="button" className="icon-btn" aria-label="Dodaj ćwiczenie" onClick={() => void addExercise()}>
-            <PlusIcon />
-          </button>
-        </div>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
       )}
-      {error && <p className="error">{error}</p>}
-      <div className="table-wrap">
-        <table className="plan">
-          <colgroup>
-            <col className="c-blok" />
-            <col className="c-ex" />
-            <col className="c-serie" />
-            <col className="c-reps" />
-            <col className="c-o" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th className="c-blok">BLOK</th>
-              <th>ĆWICZENIE</th>
-              <th className="c-serie">SERIE</th>
-              <th className="c-reps">REPS</th>
-              <th className="c-o">O</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className={row.done ? 'is-done' : undefined}>
-                <td>
-                  <Cell
-                    row={row}
-                    field="blok"
-                    readOnly={mode !== 'trainer'}
-                    onFocusKey={() => {
-                      focused.current = `${row.id}:blok`
-                    }}
-                    onChange={(value) => {
-                      setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, blok: value } : item)))
-                      schedule(row.id, 'blok', value)
-                    }}
-                    onBlur={(value) => {
-                      focused.current = null
-                      const key = `${row.id}:blok`
-                      const existing = timers.current.get(key)
-                      if (existing) window.clearTimeout(existing)
-                      void save(row.id, 'blok', value)
-                    }}
-                  />
-                </td>
-                <td className="ex" id={`${row.id}-cwiczenie`}>
-                  <Cell
-                    row={row}
-                    field="cwiczenie"
-                    readOnly={mode !== 'trainer'}
-                    onFocusKey={() => {
-                      focused.current = `${row.id}:cwiczenie`
-                    }}
-                    onChange={(value) => {
-                      setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, cwiczenie: value } : item)))
-                      schedule(row.id, 'cwiczenie', value)
-                    }}
-                    onBlur={(value) => {
-                      focused.current = null
-                      const key = `${row.id}:cwiczenie`
-                      const existing = timers.current.get(key)
-                      if (existing) window.clearTimeout(existing)
-                      void save(row.id, 'cwiczenie', value)
-                    }}
-                  />
-                </td>
-                <td>
-                  <Cell
-                    row={row}
-                    field="serie"
-                    readOnly={mode !== 'trainer'}
-                    onFocusKey={() => {
-                      focused.current = `${row.id}:serie`
-                    }}
-                    onChange={(value) => {
-                      setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, serie: value } : item)))
-                      schedule(row.id, 'serie', value)
-                    }}
-                    onBlur={(value) => {
-                      focused.current = null
-                      const key = `${row.id}:serie`
-                      const existing = timers.current.get(key)
-                      if (existing) window.clearTimeout(existing)
-                      void save(row.id, 'serie', value)
-                    }}
-                  />
-                </td>
-                <td>
-                  <Cell
-                    row={row}
-                    field="reps"
-                    readOnly={mode !== 'trainer'}
-                    onFocusKey={() => {
-                      focused.current = `${row.id}:reps`
-                    }}
-                    onChange={(value) => {
-                      setRows((prev) => prev.map((item) => (item.id === row.id ? { ...item, reps: value } : item)))
-                      schedule(row.id, 'reps', value)
-                    }}
-                    onBlur={(value) => {
-                      focused.current = null
-                      const key = `${row.id}:reps`
-                      const existing = timers.current.get(key)
-                      if (existing) window.clearTimeout(existing)
-                      void save(row.id, 'reps', value)
-                    }}
-                  />
-                </td>
-                <td className="col-o">
+      <div className="blocks">
+        {blocks.map((block) => {
+          const total = block.exercises.length
+          const doneCount = block.exercises.filter((exercise) => exercise.done).length
+          return (
+            <section key={block.key} className="block-card">
+              <div className="block-head">
+                <span className="block-bar" />
+                <div className="block-copy">
+                  <div className="kicker">BLOK</div>
+                  {trainer ? (
+                    <input
+                      className="block-name"
+                      aria-label="Nazwa bloku"
+                      placeholder="Nazwa bloku"
+                      value={block.name}
+                      maxLength={80}
+                      autoFocus={focusKey === block.key}
+                      onChange={(event) => updateBlock(block.key, { name: event.target.value })}
+                    />
+                  ) : (
+                    <div className="block-title">{block.name || 'Blok'}</div>
+                  )}
+                  <div className={total > 0 && doneCount === total ? 'block-count is-full' : 'block-count'}>
+                    {doneCount} z {total} wykonane
+                  </div>
+                </div>
+                <div className="block-tools">
                   <button
                     type="button"
-                    className={row.done ? 'check is-on' : 'check'}
-                    aria-pressed={row.done}
-                    aria-label={row.done ? 'Odznacz ćwiczenie' : 'Oznacz jako zrobione'}
-                    onClick={() => void toggle(row)}
+                    className="icon-btn"
+                    aria-expanded={block.open}
+                    aria-label={block.open ? 'Zwiń blok' : 'Rozwiń blok'}
+                    onClick={() => setBlocks((prev) => prev.map((item) => (item.key === block.key ? { ...item, open: !item.open } : item)))}
                   >
-                    <span className="box">{row.done ? <GreenX /> : null}</span>
+                    <ChevronIcon dir={block.open ? 'up' : 'down'} />
                   </button>
-                  {mode === 'trainer' &&
-                    (confirmId === row.id ? (
-                      <button type="button" className="row-del is-hot" onClick={() => void removeRow(row.id)}>
-                        Usuń
-                      </button>
-                    ) : (
+                  {trainer && (
+                    <div className="menu-wrap">
                       <button
                         type="button"
-                        className="row-del"
-                        aria-label="Usuń ćwiczenie"
-                        onPointerDown={(event) => event.preventDefault()}
-                        onClick={() => setConfirmId(row.id)}
+                        className="icon-btn"
+                        aria-label="Menu bloku"
+                        onClick={() => {
+                          setMenuKey((current) => (current === block.key ? null : block.key))
+                          setConfirmBlock(null)
+                        }}
                       >
-                        ×
+                        <DotsIcon />
                       </button>
-                    ))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                      {menuKey === block.key && (
+                        <div className="menu" role="menu">
+                          {confirmBlock === block.key ? (
+                            <>
+                              <button
+                                type="button"
+                                className="danger"
+                                onClick={() => {
+                                  touch()
+                                  setBlocks((prev) => prev.filter((item) => item.key !== block.key))
+                                  setMenuKey(null)
+                                  setConfirmBlock(null)
+                                }}
+                              >
+                                Usuń blok
+                              </button>
+                              <button type="button" onClick={() => setConfirmBlock(null)}>
+                                Anuluj
+                              </button>
+                            </>
+                          ) : (
+                            <button type="button" className="danger" onClick={() => setConfirmBlock(block.key)}>
+                              Usuń
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {block.open && (
+                <>
+                  {total > 0 && (
+                    <div className="cols">
+                      <span>ĆWICZENIE</span>
+                      <span>SERIE</span>
+                      <span>REPS</span>
+                      <span />
+                    </div>
+                  )}
+                  {block.exercises.map((exercise, index) => {
+                    const removed = exercise.imageFile === null
+                    const src =
+                      exercise.previewUrl ||
+                      (!removed && exercise.hasImage && exercise.id
+                        ? `${imageBase}/${exercise.id}/image?v=${encodeURIComponent(exercise.updatedAt)}`
+                        : null)
+                    return (
+                      <article key={exercise.key} className={exercise.done ? 'ex-card is-done' : 'ex-card'}>
+                        <div className="ex-main">
+                          <div className="ex-num">{String(index + 1).padStart(2, '0')}</div>
+                          {trainer ? (
+                            <button
+                              type="button"
+                              className="photo-btn"
+                              aria-label={src ? 'Zmień zdjęcie ćwiczenia' : 'Dodaj zdjęcie ćwiczenia'}
+                              onClick={() => {
+                                pickKey.current = exercise.key
+                                fileRef.current?.click()
+                              }}
+                            >
+                              {src ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={src} alt="" />
+                              ) : (
+                                <PhotoIcon plus />
+                              )}
+                            </button>
+                          ) : (
+                            <span className="photo">
+                              {src ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={src} alt="" />
+                              ) : (
+                                <PhotoIcon />
+                              )}
+                            </span>
+                          )}
+                          <div>
+                            {trainer ? (
+                              <input
+                                className="ex-name"
+                                aria-label="Nazwa ćwiczenia"
+                                placeholder="Nazwa ćwiczenia"
+                                value={exercise.cwiczenie}
+                                onChange={(event) => updateExercise(block.key, exercise.key, { cwiczenie: event.target.value })}
+                              />
+                            ) : (
+                              <div className="ex-title">{exercise.cwiczenie}</div>
+                            )}
+                            {exercise.done && (
+                              <div className="done-flag">
+                                <CheckIcon color="var(--green)" /> Wykonane
+                              </div>
+                            )}
+                            {(trainer || exercise.opis.trim()) && (
+                              <button
+                                type="button"
+                                className="desc-toggle"
+                                onClick={() =>
+                                  setBlocks((prev) =>
+                                    prev.map((item) =>
+                                      item.key === block.key
+                                        ? {
+                                            ...item,
+                                            exercises: item.exercises.map((row) =>
+                                              row.key === exercise.key ? { ...row, opisOpen: !row.opisOpen } : row,
+                                            ),
+                                          }
+                                        : item,
+                                    ),
+                                  )
+                                }
+                              >
+                                <ChevronIcon dir={exercise.opisOpen ? 'up' : 'down'} />
+                                {exercise.opisOpen ? 'Zwiń opis' : 'Pokaż opis'}
+                              </button>
+                            )}
+                          </div>
+                          {trainer ? (
+                            <input
+                              className="metric"
+                              aria-label="Serie"
+                              inputMode="numeric"
+                              value={exercise.serie}
+                              onChange={(event) => updateExercise(block.key, exercise.key, { serie: event.target.value })}
+                            />
+                          ) : (
+                            <span className="metric-text">{exercise.serie}</span>
+                          )}
+                          {trainer ? (
+                            <input
+                              className="metric"
+                              aria-label="Powtórzenia"
+                              inputMode="numeric"
+                              value={exercise.reps}
+                              onChange={(event) => updateExercise(block.key, exercise.key, { reps: event.target.value })}
+                            />
+                          ) : (
+                            <span className="metric-text">{exercise.reps}</span>
+                          )}
+                          <button
+                            type="button"
+                            className={exercise.done ? 'check is-on' : 'check'}
+                            aria-pressed={exercise.done}
+                            aria-label={exercise.done ? 'Cofnij wykonanie' : 'Oznacz jako wykonane'}
+                            onClick={() => void toggle(block.key, exercise)}
+                          >
+                            {exercise.done ? <CheckIcon color="#fff" /> : null}
+                          </button>
+                        </div>
+                        {exercise.opisOpen && (
+                          <div className="ex-desc">
+                            {trainer ? (
+                              <textarea
+                                aria-label="Opis ćwiczenia"
+                                placeholder="Dodaj opis ćwiczenia"
+                                value={exercise.opis}
+                                onChange={(event) => updateExercise(block.key, exercise.key, { opis: event.target.value })}
+                              />
+                            ) : (
+                              exercise.opis
+                            )}
+                          </div>
+                        )}
+                        {trainer && (
+                          <button
+                            type="button"
+                            className="ex-remove"
+                            onClick={() => {
+                              touch()
+                              setBlocks((prev) =>
+                                prev.map((item) =>
+                                  item.key === block.key
+                                    ? { ...item, exercises: item.exercises.filter((row) => row.key !== exercise.key) }
+                                    : item,
+                                ),
+                              )
+                            }}
+                          >
+                            Usuń
+                          </button>
+                        )}
+                      </article>
+                    )
+                  })}
+                  {trainer && (
+                    <button
+                      type="button"
+                      className="add-ex"
+                      onClick={() => {
+                        touch()
+                        const key = `tmp-${crypto.randomUUID()}`
+                        setBlocks((prev) =>
+                          prev.map((item) =>
+                            item.key === block.key
+                              ? {
+                                  ...item,
+                                  open: true,
+                                  exercises: [
+                                    ...item.exercises,
+                                    {
+                                      key,
+                                      cwiczenie: '',
+                                      serie: '',
+                                      reps: '',
+                                      opis: '',
+                                      done: false,
+                                      hasImage: false,
+                                      updatedAt: '',
+                                      opisOpen: false,
+                                    },
+                                  ],
+                                }
+                              : item,
+                          ),
+                        )
+                      }}
+                    >
+                      + Dodaj ćwiczenie
+                    </button>
+                  )}
+                </>
+              )}
+            </section>
+          )
+        })}
       </div>
-      {mode === 'trainer' && (
+      {trainer && (
+        <button
+          type="button"
+          className="add-block"
+          onClick={() => {
+            touch()
+            const key = `tmp-${crypto.randomUUID()}`
+            setFocusKey(key)
+            setBlocks((prev) => [...prev, { key, name: '', open: true, exercises: [] }])
+          }}
+        >
+          + Dodaj blok
+        </button>
+      )}
+      {trainer && deleteUrl && (
         <div className="danger-zone">
           {confirmWorkout ? (
             <div className="confirm-line">
@@ -391,6 +583,58 @@ export function WorkoutScreen({
             </button>
           )}
         </div>
+      )}
+      {trainer && (
+        <div className="save-bar">
+          <button type="button" className="btn-yellow" onClick={() => void save()} disabled={busy}>
+            {busy ? 'Zapisywanie…' : 'Zapisz plan'}
+          </button>
+        </div>
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
+      <input
+        ref={fileRef}
+        className="sr-only"
+        type="file"
+        accept="image/*"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          const key = pickKey.current
+          if (!file || !key) return
+          setCrop({ src: URL.createObjectURL(file), key })
+        }}
+      />
+      {crop && (
+        <CropDialog
+          src={crop.src}
+          shape="rect"
+          title="Kadruj zdjęcie ćwiczenia"
+          onCancel={() => {
+            URL.revokeObjectURL(crop.src)
+            setCrop(null)
+          }}
+          onConfirm={(blob) => {
+            const previewUrl = URL.createObjectURL(blob)
+            setBlocks((prev) =>
+              prev.map((block) => ({
+                ...block,
+                exercises: block.exercises.map((exercise) => {
+                  if (exercise.key !== crop.key) return exercise
+                  if (exercise.previewUrl) URL.revokeObjectURL(exercise.previewUrl)
+                  return { ...exercise, imageFile: blob, previewUrl, hasImage: true }
+                }),
+              })),
+            )
+            touch()
+            URL.revokeObjectURL(crop.src)
+            setCrop(null)
+          }}
+        />
       )}
     </>
   )
