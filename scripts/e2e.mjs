@@ -326,6 +326,36 @@ assert(me.status === 200, 'panel pamięta ciasteczko')
 const lockedProfile = await fetch(`${base}/api/trainer/clients/${clientId}/profile`, { method: 'PATCH' })
 assert(lockedProfile.status === 401, 'profil trenera wymaga sesji')
 
+const dated = await req(`/api/trainer/workouts/${plan.data.id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ planDate: '2024-03-05' }),
+})
+assert(dated.status === 200 && dated.data.date === '2024-03-05', `zapis daty treningu ${dated.status}`)
+const listed = await req('/api/trainer/clients')
+const listedClient = listed.data.clients.find((item) => item.id === clientId)
+const listedPlan = listedClient?.workouts.find((item) => item.id === plan.data.id)
+assert(listedPlan?.date === '2024-03-05', 'lista pokazuje nową datę')
+const badDate = await req(`/api/trainer/workouts/${plan.data.id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ planDate: '32.13.2020' }),
+})
+assert(badDate.status === 400, 'zła data odrzucona')
+const clientDate = await req(`/api/client/${token}/workouts/${plan.data.id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ planDate: '2024-01-01' }),
+})
+assert(clientDate.status === 403, 'klient nie zmienia daty treningu')
+const clientRemove = await req(`/api/client/${otherToken}/remove`, { method: 'POST', body: '{}' })
+assert(clientRemove.status === 403, 'klient nie usuwa się z panelu')
+const archived = await req(`/api/trainer/clients/${other.data.client.id}/archive`, { method: 'POST', body: '{}' })
+assert(archived.status === 200, 'trener ukrywa klienta')
+const afterArchive = await req('/api/trainer/clients')
+assert(!afterArchive.data.clients.some((item) => item.id === other.data.client.id), 'ukryty klient znika z listy')
+const stillThere = await req(`/api/client/${otherToken}`)
+assert(stillThere.status === 200, 'link klienta działa po ukryciu')
+const trainerGone = await req(`/api/trainer/clients/${other.data.client.id}`)
+assert(trainerGone.status === 404, 'ukryty klient nie otwiera się w panelu')
+
 await req(`/api/trainer/workouts/${plan.data.id}`, { method: 'DELETE' })
 const removed = await req(`/api/trainer/clients/${clientId}`, { method: 'DELETE' })
 assert(removed.status === 200, 'usunięcie klienta')

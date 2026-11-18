@@ -1,4 +1,4 @@
-import { deleteWorkout, getWorkout, saveWorkoutPlan, type PlanSaveInput } from '@/lib/data'
+import { deleteWorkout, getWorkout, saveWorkoutPlan, updateWorkoutPlanDate, type PlanSaveInput } from '@/lib/data'
 import { trainerGuard } from '@/lib/guard'
 import { json, readBody, rejectCrossSite } from '@/lib/http'
 import { decodeDataImage } from '@/lib/image-payload'
@@ -29,6 +29,22 @@ function asText(value: unknown) {
   if (value === undefined || value === null) return ''
   if (typeof value !== 'string') return false as const
   return value
+}
+
+export async function PATCH(req: Request, ctx: Ctx) {
+  const session = await trainerGuard()
+  if (session instanceof Response) return session
+  const blocked = rejectCrossSite(req)
+  if (blocked) return blocked
+  const body = await readBody<{ planDate?: unknown }>(req)
+  if (!body || typeof body.planDate !== 'string') return json({ error: 'Podaj datę.' }, 400)
+  const { id } = await ctx.params
+  const saved = await updateWorkoutPlanDate(id, body.planDate)
+  if ('error' in saved) {
+    const status = saved.error === 'Nie znaleziono treningu.' ? 404 : 400
+    return json({ error: saved.error }, status)
+  }
+  return json(saved)
 }
 
 export async function PUT(req: Request, ctx: Ctx) {
