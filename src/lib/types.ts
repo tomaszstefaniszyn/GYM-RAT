@@ -4,6 +4,8 @@ export type WorkoutPreview = {
   id: string
   name: string
   createdAt: string
+  /** Calendar date shown on the client list, YYYY-MM-DD. */
+  date: string
 }
 
 export type ClientListItem = {

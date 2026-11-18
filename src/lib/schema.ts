@@ -18,6 +18,7 @@ export const clients = pgTable('clients', {
   goal: text('goal').notNull().default(''),
   injuries: text('injuries').notNull().default(''),
   position: integer('position').notNull().default(0),
+  removedAt: timestamp('removed_at', { withTimezone: true, mode: 'date' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 })
@@ -29,6 +30,7 @@ export const workouts = pgTable('workouts', {
     .references(() => clients.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   position: integer('position').notNull().default(0),
+  planDate: date('plan_date', { mode: 'string' }),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 })
 
@@ -126,4 +128,8 @@ ALTER TABLE exercises ADD COLUMN IF NOT EXISTS image_mime text;
 ALTER TABLE exercises ADD COLUMN IF NOT EXISTS image_path text;
 
 CREATE INDEX IF NOT EXISTS exercises_block_id_idx ON exercises(block_id);
+
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS removed_at timestamptz;
+ALTER TABLE workouts ADD COLUMN IF NOT EXISTS plan_date date;
+UPDATE workouts SET plan_date = (created_at AT TIME ZONE 'Europe/Warsaw')::date WHERE plan_date IS NULL;
 `

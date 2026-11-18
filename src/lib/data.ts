@@ -1,6 +1,6 @@
 import 'server-only'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import { asc, eq, inArray, max } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, max } from 'drizzle-orm'
 import {
   deleteStoredAvatar,
   deleteStoredImage,
@@ -107,6 +107,11 @@ function mapProfile(row: typeof clients.$inferSelect): ProfileDTO {
   }
 }
 
+function shownPlanDate(workout: typeof workouts.$inferSelect) {
+  if (workout.planDate) return workout.planDate.slice(0, 10)
+  return toIso(warsawToday(workout.createdAt))
+}
+
 function mapClient(row: typeof clients.$inferSelect, clientWorkouts: (typeof workouts.$inferSelect)[]): ClientListItem {
   return {
     id: row.id,
@@ -119,6 +124,7 @@ function mapClient(row: typeof clients.$inferSelect, clientWorkouts: (typeof wor
       id: workout.id,
       name: workout.name,
       createdAt: iso(workout.createdAt),
+      date: shownPlanDate(workout),
     })),
   }
 }
@@ -137,14 +143,18 @@ function nextWorkoutName(names: string[]) {
 
 export async function listClients(): Promise<ClientListItem[]> {
   const db = await getDb()
-  const people = await db.select().from(clients).orderBy(asc(clients.position), asc(clients.createdAt))
+  const people = await db
+    .select()
+    .from(clients)
+    .where(isNull(clients.removedAt))
+    .orderBy(asc(clients.position), asc(clients.createdAt))
   const plans = await db.select().from(workouts).orderBy(asc(workouts.position), asc(workouts.createdAt))
   return people.map((person) => mapClient(person, plans.filter((plan) => plan.clientId === person.id)))
 }
 
 export async function getClientDetail(id: string) {
   const db = await getDb()
-  const [person] = await db.select().from(clients).where(eq(clients.id, id))
+  const [person] = await db.select().from(clients).where(and(eq(clients.id, id), isNull(clients.removedAt)))
   if (!person) return null
   const plans = await db
     .select()
@@ -244,6 +254,30 @@ export async function clearClientAvatar(id: string) {
   return updateClientAvatar(id, { avatarData: null, avatarMime: null, avatarPath: null })
 }
 
+export async function updateWorkoutPlanDate(id: string, planDate: string) {
+  const parsed = parseIsoDate(planDate)
+  if (!parsed) return { error: 'Podaj datę w formacie DD.MM.RRRR.' as const }
+  const db = await getDb()
+  const [row] = await db
+    .update(workouts)
+    .set({ planDate: toIso(parsed) })
+    .where(eq(workouts.id, id))
+    .returning()
+  if (!row) return { error: 'Nie znaleziono treningu.' as const }
+  return { date: shownPlanDate(row) }
+}
+
+/** Hides the client from the trainer list. The row, token and workouts stay. */
+export async function archiveClient(id: string) {
+  const db = await getDb()
+  const [row] = await db
+    .update(clients)
+    .set({ removedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(clients.id, id), isNull(clients.removedAt)))
+    .returning()
+  return Boolean(row)
+}
+
 export async function deleteClient(id: string) {
   const existing = await getClientRow(id)
   if (!existing) return false
@@ -274,6 +308,7 @@ export async function createWorkout(clientId: string, name?: string) {
         clientId,
         name: workoutName,
         position: (maxRow?.value ?? -1) + 1,
+        planDate: toIso(warsawToday()),
       })
       .returning()
     await tx.insert(blocks).values({ id: blockId, workoutId: id, name: 'Rozgrzewka', position: 0 })
