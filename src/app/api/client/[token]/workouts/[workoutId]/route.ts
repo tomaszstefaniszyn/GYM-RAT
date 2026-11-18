@@ -1,5 +1,5 @@
 import { getWorkoutForToken } from '@/lib/data'
-import { json } from '@/lib/http'
+import { forbidden, json, rejectCrossSite } from '@/lib/http'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -9,4 +9,16 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string;
   const workout = await getWorkoutForToken(token, workoutId)
   if (!workout) return json({ error: 'Nie znaleziono treningu.' }, 404)
   return json(workout)
+}
+
+export async function PUT(req: Request) {
+  const blocked = rejectCrossSite(req)
+  if (blocked) return blocked
+  return forbidden()
+}
+
+export async function DELETE(req: Request) {
+  const blocked = rejectCrossSite(req)
+  if (blocked) return blocked
+  return forbidden()
 }

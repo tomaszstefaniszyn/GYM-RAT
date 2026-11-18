@@ -13,13 +13,14 @@ export default async function ClientWorkoutPage({
   const workout = await getWorkoutForToken(token, workoutId)
   if (!workout) notFound()
   return (
-    <main className="shell tight">
+    <main className="shell">
       <WorkoutScreen
         mode="client"
         initial={workout}
         reloadUrl={`/api/client/${token}/workouts/${workout.id}`}
         backHref={`/c/${token}`}
-        exerciseBase={`/api/client/${token}/exercises`}
+        toggleBase={`/api/client/${token}/exercises`}
+        imageBase={`/api/client/${token}/exercises`}
       />
     </main>
   )

@@ -32,8 +32,8 @@ export async function GET() {
       start_url: start,
       scope: '/',
       display: 'standalone',
-      background_color: '#ffffff',
-      theme_color: '#ffffff',
+      background_color: '#f6f4ef',
+      theme_color: '#f6f4ef',
       icons,
     }),
     {

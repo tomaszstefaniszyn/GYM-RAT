@@ -1,4 +1,5 @@
 import { drizzle as drizzlePostgres, type PostgresJsDatabase } from 'drizzle-orm/postgres-js'
+import { migrateLegacyBlocks } from './migrate'
 import { schema, schemaSql } from './schema'
 
 export type Database = PostgresJsDatabase<typeof schema>
@@ -46,8 +47,10 @@ async function open(): Promise<Database> {
       await sql.end({ timeout: 5 })
     }
     holder().driver = 'postgres'
+    const db = drizzlePostgres(sql, { schema })
+    await migrateLegacyBlocks(db)
     console.info('[gym-rat] Baza: Postgres')
-    return drizzlePostgres(sql, { schema })
+    return db
   }
 
   if (process.env.NODE_ENV === 'production') {
@@ -56,7 +59,7 @@ async function open(): Promise<Database> {
 
   const { mkdir } = await import('node:fs/promises')
   const path = await import('node:path')
-  const dir = path.join(process.cwd(), 'data', 'pglite')
+  const dir = process.env.PGLITE_DIR?.trim() || path.join(process.cwd(), 'data', 'pglite')
   await mkdir(dir, { recursive: true })
   const { PGlite } = await import('@electric-sql/pglite')
   const { drizzle } = await import('drizzle-orm/pglite')
@@ -65,9 +68,11 @@ async function open(): Promise<Database> {
   holder().close = async () => {
     await client.close()
   }
+  const db = drizzle(client, { schema }) as unknown as Database
+  await migrateLegacyBlocks(db)
   holder().driver = 'pglite'
   console.info(`[gym-rat] Baza: PGlite (${dir})`)
-  return drizzle(client, { schema }) as unknown as Database
+  return db
 }
 
 export function getDb() {

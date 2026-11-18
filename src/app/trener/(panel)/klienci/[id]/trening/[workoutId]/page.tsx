@@ -13,15 +13,16 @@ export default async function TrainerWorkoutPage({
   const workout = await getWorkout(workoutId)
   if (!workout || workout.clientId !== id) notFound()
   return (
-    <main className="shell tight">
+    <main className="shell has-dock">
       <WorkoutScreen
         mode="trainer"
         initial={workout}
         reloadUrl={`/api/trainer/workouts/${workout.id}`}
         backHref={`/trener/klienci/${id}`}
-        exerciseBase="/api/trainer/exercises"
-        addUrl={`/api/trainer/workouts/${workout.id}/exercises`}
+        saveUrl={`/api/trainer/workouts/${workout.id}`}
         deleteUrl={`/api/trainer/workouts/${workout.id}`}
+        toggleBase="/api/trainer/exercises"
+        imageBase="/api/trainer/exercises"
       />
     </main>
   )

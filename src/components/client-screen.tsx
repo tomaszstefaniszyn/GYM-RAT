@@ -2,79 +2,78 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api-client'
-import { formatPlDate } from '@/lib/dates'
 import type { ClientListItem } from '@/lib/types'
 import { usePoll } from '@/lib/use-poll'
-import { AvatarButton } from './avatar'
-import { NameDialog } from './dialogs'
-import { BackIcon, PlusIcon } from './mark'
+import { Avatar } from './avatar'
+import { BackIcon, ChevronIcon, PlusIcon } from './mark'
 
 export function ClientScreen({ initial }: { initial: ClientListItem }) {
+  const router = useRouter()
   const [client, setClient] = useState(initial)
-  const [adding, setAdding] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   usePoll(async () => {
-    const fresh = await api<ClientListItem>(`/api/trainer/clients/${client.id}`)
-    setClient(fresh)
+    setClient(await api<ClientListItem>(`/api/trainer/clients/${client.id}`))
   }, 4000)
+
+  const avatar = client.hasAvatar
+    ? `/api/trainer/clients/${client.id}/avatar?v=${encodeURIComponent(client.updatedAt)}`
+    : null
 
   return (
     <>
-      <header className="identity">
+      <header className="topbar">
         <Link href="/trener/klienci" className="icon-btn" aria-label="Wróć">
           <BackIcon />
         </Link>
-        <AvatarButton
-          id={client.id}
-          hasAvatar={client.hasAvatar}
-          version={client.updatedAt}
-          size={58}
-          onUploaded={(updatedAt) => setClient((prev) => ({ ...prev, hasAvatar: true, updatedAt }))}
-          onError={setError}
-        />
-        <div className="who">
-          <div className="name-line">
-            <div className="client-name">{client.name}</div>
-            <div className="email">{client.email}</div>
-          </div>
-        </div>
       </header>
-      <p className="since">Klient od {formatPlDate(client.createdAt)}</p>
+      <Link href={`/trener/klienci/${client.id}/profil`} className="identity-link">
+        <Avatar size={64} src={avatar} alt="" />
+        <span>
+          <span className="client-name">{client.name}</span>
+          <span className="email">{client.email}</span>
+        </span>
+      </Link>
+      <hr className="hairline" />
       {error && <p className="error">{error}</p>}
       <div className="add-row">
-        <span>Dodaj trening</span>
-        <button type="button" className="icon-btn" aria-label="Dodaj trening" onClick={() => setAdding(true)}>
+        <h2>Dodaj trening</h2>
+        <button
+          type="button"
+          className="plus-btn"
+          aria-label="Dodaj trening"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true)
+            setError(null)
+            void api<{ id: string }>(`/api/trainer/clients/${client.id}/workouts`, { method: 'POST', body: '{}' })
+              .then((created) => {
+                router.push(`/trener/klienci/${client.id}/trening/${created.id}`)
+                router.refresh()
+              })
+              .catch((err: unknown) => {
+                setError(err instanceof Error ? err.message : 'Nie dodano treningu.')
+                setBusy(false)
+              })
+          }}
+        >
           <PlusIcon />
         </button>
       </div>
       {client.workouts.length === 0 ? (
         <p className="empty">Brak treningów.</p>
       ) : (
-        <div className="pills">
+        <div className="tiles">
           {client.workouts.map((workout) => (
-            <Link key={workout.id} className="pill" href={`/trener/klienci/${client.id}/trening/${workout.id}`}>
+            <Link key={workout.id} className="tile" href={`/trener/klienci/${client.id}/trening/${workout.id}`}>
               {workout.name}
+              <ChevronIcon />
             </Link>
           ))}
         </div>
-      )}
-      {adding && (
-        <NameDialog
-          title="DODAJ TRENING"
-          placeholder="NAZWA"
-          onClose={() => setAdding(false)}
-          onSubmit={async (name) => {
-            await api(`/api/trainer/clients/${client.id}/workouts`, {
-              method: 'POST',
-              body: JSON.stringify({ name }),
-            })
-            const fresh = await api<ClientListItem>(`/api/trainer/clients/${client.id}`)
-            setClient(fresh)
-            setAdding(false)
-          }}
-        />
       )}
     </>
   )

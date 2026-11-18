@@ -20,12 +20,12 @@ npm run dev
 
 Otwórz [http://localhost:3000/trener](http://localhost:3000/trener).
 
-Zaloguj się jednym z adresów:
+Zaloguj się jednym z adresów i hasłem wbudowanym w serwer (`MasterSplinter`, wielkość liter ma znaczenie):
 
 - `tomaszstefaniszyn9@gmail.com`
 - `czulosc.joga@gmail.com`
 
-Hasła nie ma. Serwer sprawdza adres na allowliście i zapisuje sesję w ciasteczku. Inny adres dostaje komunikat „Ten adres nie ma dostępu do panelu trenera.”
+Hasło jest sprawdzane tylko na serwerze. Nie trafia do paczki przeglądarki. Można je nadpisać zmienną `TRAINER_PASSWORD` (bez tego produkcja działa od razu, też na Vercelu). Zły e-mail i złe hasło dają ten sam komunikat: „Nieprawidłowy e-mail lub hasło.”
 
 Baza lokalna to wbudowany Postgres (PGlite) w katalogu `data/pglite`. Nic nie trzeba stawiać. Katalog `data/` nie trafia do gita.
 
@@ -60,19 +60,19 @@ npm run e2e
 
 **Trener**
 
-1. Wejście mailem z allowlisty.
+1. Wejście mailem z allowlisty i hasłem.
 2. Lista klientów. `+` otwiera „WYŚLIJ ZAPROSZENIE:” (imię i e-mail).
-3. Szare kółko przy kliencie otwiera galerię telefonu (`input` z `accept="image/*"`) i zapisuje zdjęcie.
-4. Pod imieniem widać treningi i datę dodania, np. `Trening A - 30.10.2025`.
-5. Wejście w kafelek: „Klient od &lt;data&gt;”, „Dodaj trening +”, pigułki treningów.
-6. Trening to tabela BLOK, ĆWICZENIE, SERIE, REPS, O. Nagłówki są stałe. „Dodaj ćwiczenie +” dokłada wiersz. Pozostałe komórki edytuje się dotknięciem, zapis jest automatyczny. Kolumna O to kwadrat: dotknięcie stawia zielony X i przekreśla wiersz, kolejne dotknięcie cofa. Wiersz w edycji ma „×”, na dole jest „Usuń trening”.
+3. Pod imieniem widać treningi i datę dodania, np. `Trening A · 30.10.2025`.
+4. Ekran klienta: zdjęcie, imię (otwiera profil), e-mail. Nie ma już „Klient od”.
+5. „Dodaj trening +” tworzy trening z pustym blokiem „Rozgrzewka” i otwiera edycję.
+6. Trening składa się z bloków. W bloku są ćwiczenia: nazwa, serie, powtórzenia, opis i zdjęcie (z kadrowaniem). „Zapisz plan” zapisuje strukturę. Checkbox wykonania zapisuje się od razu. Na dole zostaje „Usuń trening”.
 
 **Klient**
 
 1. Otwiera link z maila. Token jest długi i nie do zgadnięcia.
 2. Telefon zapamiętuje klienta (ciasteczko na rok oraz `localStorage`), więc ikona PWA otwiera ten sam plan.
-3. Ekran główny: logo i „GYM RAT”, pigułki treningów dodanych przez trenera.
-4. Tabela jest tylko do odczytu, poza kolumną O — klient odhacza tak samo jak trener. Stan jest jeden, w bazie.
+3. Ekran główny: logo, „GYM RAT”, „Mój profil” i kafelki treningów. Pusty plan ma czytelny stan.
+4. Trening jest tylko do odczytu poza checkboxem wykonania i rozwijaniem bloków oraz opisów. Klient edytuje wyłącznie własny profil (w tym karnet i wejścia). Próba zapisu struktury treningu zwraca 403.
 
 Gdy klient wejdzie na `/panel` bez linku, zobaczy prośbę o otwarcie maila. Jeśli telefon już pamięta token, `/panel` przenosi do planu.
 
@@ -104,6 +104,7 @@ Wszystkie są w `.env.example`. Na Vercelu wpisz je w Settings → Environment V
 | `SESSION_SECRET` | tak, min. 16 znaków | Podpis ciasteczka trenera. Bez tego produkcja nie wstanie. |
 | `APP_URL` | zalecana | Adres publiczny bez końcowego slasha, np. `https://gym-rat.vercel.app`. Linki w mailach. Gdy puste, używany jest host żądania. |
 | `TRAINER_EMAILS` | nie | Allowlista, po przecinku. Puste = dwa adresy z makiety. |
+| `TRAINER_PASSWORD` | nie | Hasło trenera. Puste = hasło wbudowane w serwer (`MasterSplinter`). Tylko serwer, nigdy `NEXT_PUBLIC_`. |
 | `GMAIL_USER` | zalecane do maili | Adres Gmail, z którego wychodzą zaproszenia. Nadawca: „Gym Rat”. |
 | `GMAIL_APP_PASSWORD` | razem z `GMAIL_USER` | Hasło aplikacji Google (nie hasło do konta). |
 | `RESEND_API_KEY` | nie, gdy jest Gmail | Zapasowy dostawca. Używany tylko, gdy brak `GMAIL_*`. |
@@ -120,7 +121,7 @@ Wszystkie są w `.env.example`. Na Vercelu wpisz je w Settings → Environment V
 4. Dopisz `?sslmode=require`, jeśli go nie ma.
 5. Wklej ten URI jako `DATABASE_URL`.
 
-Tabele (`clients`, `workouts`, `exercises`) tworzą się same przy pierwszym wejściu (`CREATE TABLE IF NOT EXISTS`). Można je też założyć wcześniej z komputera:
+Tabele (`clients`, `workouts`, `blocks`, `exercises`) tworzą się same przy pierwszym wejściu (`CREATE TABLE IF NOT EXISTS` oraz `ADD COLUMN IF NOT EXISTS`). Istniejące wiersze ćwiczeń są grupowane w bloki według dawnej kolumny BLOK, bez kasowania treści i odhaczeń. Można też założyć schemat wcześniej z komputera:
 
 ```bash
 DATABASE_URL="postgresql://..." npm run db:migrate
@@ -191,23 +192,19 @@ Dwa manifesty (`/manifest-trener.webmanifest` i `/api/manifest-klient`) mają in
 
 ## Logowanie trenera
 
-Jest celowo bez hasła: allowlista e-maili i ciasteczko sesji podpisane `SESSION_SECRET` (180 dni). Sprawdzenie jest w `requestTrainerLogin` w `src/lib/auth.ts`. Funkcja jest rozdzielona tak, żeby później wstawić kod z maila bez ruszania sesji:
-
-1. `requestTrainerLogin` — dziś sprawdza allowlistę i od razu otwiera sesję.
-2. Miejsce na `issueLoginCode` — kod jednorazowy mailem.
-3. Miejsce na `verifyLoginCode` — sesja dopiero po kodzie.
+Allowlista e-maili i hasło, ciasteczko sesji podpisane `SESSION_SECRET` (180 dni). Sprawdzenie jest w `requestTrainerLogin` w `src/lib/auth.ts`. Hasło porównuje `src/lib/password.ts` (SHA-256, `timingSafeEqual`). Źródło hasła: `TRAINER_PASSWORD`, a gdy zmienna jest pusta — skrót wbudowany w kod serwera. Zły adres z listy i złe hasło dają jeden komunikat.
 
 Allowlista: `TRAINER_EMAILS=a@b.pl,c@d.pl`. Usunięcie adresu ze zmiennej unieważnia jego stare ciasteczko.
 
 ## Logo
 
-Źródło to `public/logo.svg` (czarne kółko, biały szczur). Podmień ten plik i przebuduj ikony PWA:
+Źródło aplikacji to `public/logo.png` (oficjalny znak: szczur w czarnym kole, przezroczystość poza kołem). Ikony PWA:
 
 ```bash
 npm run icons
 ```
 
-Powstaną `public/icons/icon-192.png`, `icon-512.png`, `icon-maskable-512.png` i `apple-touch-icon.png`.
+Powstaną `public/icons/icon-192.png`, `icon-512.png`, `icon-maskable-512.png`, `apple-touch-icon.png` oraz favicon (`src/app/icon.png`).
 
 ## Przydatne komendy
 
@@ -217,8 +214,8 @@ Powstaną `public/icons/icon-192.png`, `icon-512.png`, `icon-maskable-512.png` i
 | `npm run build` / `npm start` | build produkcyjny |
 | `npm run db:migrate` | zakłada tabele |
 | `npm run db:seed` | dane z makiety (kasuje klientów) |
-| `npm run e2e` | test API: logowanie, zaproszenie, wspólny checkbox, awatar |
-| `npm run icons` | ikony z `public/logo.svg` |
+| `npm run e2e` | test API: logowanie, profil, bloki, 403 klienta, checkbox, awatar |
+| `npm run icons` | ikony PWA z `public/logo.png` |
 | `npm run lint` | ESLint |
 
 Opcjonalny Postgres w Dockerze zamiast PGlite: `docker compose up -d` i `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/gymrat`.
