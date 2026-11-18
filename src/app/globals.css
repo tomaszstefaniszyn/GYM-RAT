@@ -302,6 +302,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 
 .client-list { margin: 4px -16px 0; }
 .swipe-host { position: relative; overflow: hidden; touch-action: pan-y; }
+.swipe-host.is-menu { overflow: visible; z-index: 4; }
 .swipe-reveal {
   position: absolute;
   top: 0;
@@ -456,7 +457,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 .menu {
   position: absolute;
   right: 0;
-  top: 36px;
+  top: 42px;
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 12px;

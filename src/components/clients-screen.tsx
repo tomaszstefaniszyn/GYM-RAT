@@ -253,7 +253,7 @@ function ClientRow({
   }, [open, dragging])
 
   return (
-    <li className="swipe-host" data-swipe="">
+    <li className={menu ? 'swipe-host is-menu' : 'swipe-host'} data-swipe="">
       <button type="button" className="swipe-reveal" onClick={onAskRemove}>
         <TrashIcon />
         Usuń
