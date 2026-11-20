@@ -751,6 +751,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
   justify-content: center;
   align-items: flex-start;
   padding: 12vh 16px 16px;
+  overscroll-behavior: none;
+}
+.backdrop.is-sheet {
+  align-items: flex-end;
+  padding: 0;
 }
 .dialog {
   width: min(100%, 420px);
@@ -863,6 +868,25 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
   padding: 16px 14px 18px;
   margin-top: 6vh;
 }
+.sheet.library-sheet {
+  width: min(100%, 480px);
+  height: min(92dvh, calc(100dvh - env(safe-area-inset-top)));
+  max-height: calc(100dvh - env(safe-area-inset-top));
+  margin: 0;
+  border-radius: 20px 20px 0 0;
+  padding: 12px 0 calc(8px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.library-sheet .sheet-head,
+.library-sheet .lib-manual,
+.library-sheet .lib-form,
+.library-sheet .lib-search,
+.library-sheet .lib-error {
+  margin-left: 14px;
+  margin-right: 14px;
+}
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .sheet-head h2 { margin: 0; text-align: left; letter-spacing: -0.03em; font-size: 18px; }
 .lib-manual {
@@ -876,7 +900,38 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 }
 .lib-form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
 .lib-photo-row { display: flex; align-items: center; gap: 12px; }
-.lib-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.lib-search {
+  position: relative;
+  margin-top: 10px;
+  background: #fff;
+  z-index: 2;
+}
+.lib-search .control { font-size: 16px; padding-right: 44px; }
+.lib-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 22px;
+  line-height: 1;
+  color: #6f6a62;
+}
+.lib-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 8px 14px calc(24px + env(safe-area-inset-bottom));
+}
+.lib-list { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.lib-list .swipe-host { border-radius: 14px; background: #fff; }
+.lib-list .swipe-reveal { right: -88px; width: 88px; }
+.lib-list .swipe-host.is-open .swipe-reveal { right: 0; }
+.library-sheet .lib-manual { width: auto; }
 .lib-row { display: flex; align-items: center; gap: 8px; min-height: 64px; padding: 6px 4px; }
 .lib-pick { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left; }
 .lib-photo { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; background: #e7e2da; flex: none; }

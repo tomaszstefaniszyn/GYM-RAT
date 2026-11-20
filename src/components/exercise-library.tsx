@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api-client'
 import { compressImage } from '@/lib/image'
 import type { LibraryExerciseDTO } from '@/lib/types'
@@ -22,27 +22,51 @@ function blobToBase64(blob: Blob) {
   })
 }
 
+function fold(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+}
+
 export function ExerciseLibrary({ onClose, onPick }: { onClose: () => void; onPick: (pick: LibraryPick) => void }) {
   const [items, setItems] = useState<LibraryExerciseDTO[]>([])
+  const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState<string | null>(null)
   const [menuId, setMenuId] = useState<string | null>(null)
   const [manual, setManual] = useState(false)
   const [name, setName] = useState('')
   const [file, setFile] = useState<Blob | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [pickingId, setPickingId] = useState<string | null>(null)
   const saving = useRef(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [])
+
+  useEffect(() => {
     let cancelled = false
+    setLoading(true)
     void api<{ exercises: LibraryExerciseDTO[] }>('/api/trainer/library')
       .then((data) => {
-        if (!cancelled) setItems(data.exercises)
+        if (cancelled) return
+        setItems(data.exercises)
+        setError(null)
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Nie udało się wczytać biblioteki.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
       })
     return () => {
       cancelled = true
@@ -57,14 +81,26 @@ export function ExerciseLibrary({ onClose, onPick }: { onClose: () => void; onPi
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const shown = useMemo(() => {
+    const needle = fold(query.trim())
+    if (!needle) return items
+    return items.filter((item) => fold(item.name).includes(needle))
+  }, [items, query])
+
   async function choose(item: LibraryExerciseDTO) {
+    if (pickingId || saving.current) return
+    setPickingId(item.id)
     let image: Blob | null = null
     if (item.imageUrl) {
+      const controller = new AbortController()
+      const timer = window.setTimeout(() => controller.abort(), 8000)
       try {
-        const res = await fetch(item.imageUrl)
+        const res = await fetch(item.imageUrl, { signal: controller.signal })
         if (res.ok) image = await res.blob()
       } catch {
         image = null
+      } finally {
+        window.clearTimeout(timer)
       }
     }
     onPick({ name: item.name, image })
@@ -111,9 +147,9 @@ export function ExerciseLibrary({ onClose, onPick }: { onClose: () => void; onPi
   }
 
   return (
-    <div className="backdrop" onMouseDown={onClose}>
+    <div className="backdrop is-sheet" onMouseDown={onClose}>
       <div
-        className="sheet"
+        className="sheet library-sheet"
         role="dialog"
         aria-modal="true"
         aria-labelledby="library-title"
@@ -192,34 +228,64 @@ export function ExerciseLibrary({ onClose, onPick }: { onClose: () => void; onPi
               >
                 Anuluj
               </button>
-              <button type="submit" className="btn-yellow" disabled={busy}>
+              <button type="submit" className="btn-yellow" disabled={busy || pickingId !== null}>
                 Dodaj ćwiczenie
               </button>
             </div>
           </form>
         )}
-        {error && <p className="error">{error}</p>}
-        <ul className="lib-list">
-          {items.map((item) => (
-            <LibraryRow
-              key={item.id}
-              item={item}
-              open={openId === item.id}
-              menu={menuId === item.id}
-              onOpen={() => {
-                setMenuId(null)
-                setOpenId(item.id)
-              }}
-              onClose={() => setOpenId((current) => (current === item.id ? null : current))}
-              onMenu={() => {
-                setOpenId(null)
-                setMenuId((current) => (current === item.id ? null : item.id))
-              }}
-              onPick={() => void choose(item)}
-              onRemove={() => void remove(item.id)}
-            />
-          ))}
-        </ul>
+        <div className="lib-search">
+          <input
+            className="control"
+            type="text"
+            inputMode="search"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="Szukaj ćwiczenia"
+            aria-label="Szukaj ćwiczenia"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          {query && (
+            <button type="button" className="lib-clear" aria-label="Wyczyść wyszukiwanie" onClick={() => setQuery('')}>
+              ×
+            </button>
+          )}
+        </div>
+        {error && <p className="error lib-error">{error}</p>}
+        <div className="lib-scroll">
+          {loading ? (
+            <p className="empty">Wczytuję bibliotekę…</p>
+          ) : shown.length === 0 ? (
+            <p className="empty">Brak wyników</p>
+          ) : (
+            <ul className="lib-list">
+              {shown.map((item) => (
+                <LibraryRow
+                  key={item.id}
+                  item={item}
+                  open={openId === item.id}
+                  menu={menuId === item.id}
+                  picking={pickingId === item.id}
+                  disabled={pickingId !== null && pickingId !== item.id}
+                  onOpen={() => {
+                    setMenuId(null)
+                    setOpenId(item.id)
+                  }}
+                  onClose={() => setOpenId((current) => (current === item.id ? null : current))}
+                  onMenu={() => {
+                    setOpenId(null)
+                    setMenuId((current) => (current === item.id ? null : item.id))
+                  }}
+                  onPick={() => void choose(item)}
+                  onRemove={() => void remove(item.id)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -229,6 +295,8 @@ function LibraryRow({
   item,
   open,
   menu,
+  picking,
+  disabled,
   onOpen,
   onClose,
   onMenu,
@@ -238,26 +306,37 @@ function LibraryRow({
   item: LibraryExerciseDTO
   open: boolean
   menu: boolean
+  picking: boolean
+  disabled: boolean
   onOpen: () => void
   onClose: () => void
   onMenu: () => void
   onPick: () => void
   onRemove: () => void
 }) {
-  const { shift, dragging, suppress, bind } = useHorizontalSwipe(open, onOpen, onClose, 88)
+  const { shift, dragging, suppress, bind } = useHorizontalSwipe(open, onOpen, onClose, 88, false)
   const src = item.imageUrl || '/exercises/placeholder.svg'
+  const revealed = open || dragging
   return (
-    <li className={menu ? 'swipe-host is-menu' : 'swipe-host'} data-swipe="">
-      <button type="button" className="swipe-reveal" onClick={onRemove}>
-        <TrashIcon />
-        Usuń
-      </button>
-      <div className={dragging ? 'swipe-face on-card is-drag' : 'swipe-face on-card'} style={{ transform: `translateX(${shift}px)` }} {...bind}>
+    <li className={menu ? 'swipe-host is-menu' : revealed ? 'swipe-host is-open' : 'swipe-host'} data-swipe="">
+      {revealed && (
+        <button type="button" className="swipe-reveal" onClick={onRemove}>
+          <TrashIcon />
+          Usuń
+        </button>
+      )}
+      <div
+        className={dragging ? 'swipe-face on-card is-drag' : 'swipe-face on-card'}
+        style={shift ? { transform: `translate3d(${shift}px, 0, 0)` } : undefined}
+        {...bind}
+      >
         <div className="lib-row">
           <button
             type="button"
             className="lib-pick"
+            disabled={disabled || picking}
             onClick={() => {
+              if (disabled || picking) return
               if (suppress.current || open) {
                 suppress.current = false
                 if (open) onClose()
@@ -268,7 +347,7 @@ function LibraryRow({
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img className="lib-photo" src={src} alt="" loading="lazy" decoding="async" />
-            <span className="lib-name">{item.name}</span>
+            <span className="lib-name">{picking ? 'Wybieram…' : item.name}</span>
           </button>
           <div className="row-menu-wrap">
             <button

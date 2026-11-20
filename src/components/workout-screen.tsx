@@ -10,7 +10,16 @@ import { usePoll } from '@/lib/use-poll'
 import type { LibraryPick } from './exercise-library'
 
 const CropDialog = dynamic(() => import('./crop-dialog').then((mod) => mod.CropDialog), { ssr: false })
-const ExerciseLibrary = dynamic(() => import('./exercise-library').then((mod) => mod.ExerciseLibrary), { ssr: false })
+const ExerciseLibrary = dynamic(() => import('./exercise-library').then((mod) => mod.ExerciseLibrary), {
+  ssr: false,
+  loading: () => (
+    <div className="backdrop is-sheet">
+      <div className="sheet library-sheet">
+        <p className="empty">Wczytuję bibliotekę…</p>
+      </div>
+    </div>
+  ),
+})
 import { BackIcon, CheckIcon, ChevronIcon, DotsIcon, Logo, TrashIcon } from './mark'
 
 type DraftExercise = {
