@@ -7,7 +7,13 @@ import { useEffect, useRef, useState } from 'react'
  * touch-action: pan-y is set in CSS. The pointer is captured only after
  * the gesture is clearly more horizontal than vertical.
  */
-export function useHorizontalSwipe(open: boolean, onOpen: () => void, onClose: () => void, reveal = 96) {
+export function useHorizontalSwipe(
+  open: boolean,
+  onOpen: () => void,
+  onClose: () => void,
+  reveal = 96,
+  capture = true,
+) {
   const [shift, setShift] = useState(0)
   const [dragging, setDragging] = useState(false)
   const start = useRef<{ x: number; y: number; axis: 'x' | 'y' | null; pointer: number } | null>(null)
@@ -41,7 +47,7 @@ export function useHorizontalSwipe(open: boolean, onOpen: () => void, onClose: (
           return
         }
         setDragging(true)
-        event.currentTarget.setPointerCapture(event.pointerId)
+        if (capture) event.currentTarget.setPointerCapture(event.pointerId)
       }
       if (origin.axis !== 'x') return
       suppress.current = true
