@@ -183,7 +183,7 @@ function PassLines({ summary }: { summary: PassSummary }) {
       </span>
       {summary.validUntil && (
         <span className="meta-line">
-          Karnet ważny do <b className="tone-ink">{summary.validUntil}</b>
+          Karnet ważny do <b>{summary.validUntil}</b>
         </span>
       )}
     </>

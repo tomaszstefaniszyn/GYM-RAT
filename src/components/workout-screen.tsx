@@ -485,8 +485,8 @@ export function WorkoutScreen({
                           ) : (
                             <span className="photo">{photo}</span>
                           )}
-                          <label className="stat">
-                            Serie
+                          <label className="stat stat-serie">
+                            <span className="stat-label">Serie</span>
                             {trainer ? (
                               <input
                                 className="sq"
@@ -500,7 +500,7 @@ export function WorkoutScreen({
                             )}
                           </label>
                           <label className="stat stat-reps">
-                            Reps
+                            <span className="stat-label">Reps</span>
                             {trainer ? (
                               <input
                                 className="sq sq-reps"
@@ -517,8 +517,8 @@ export function WorkoutScreen({
                               <span className="sq-text sq-reps-text">{exercise.reps}</span>
                             )}
                           </label>
-                          <div className="stat">
-                            Wykonane
+                          <div className="stat stat-done">
+                            <span className="stat-label">Wykonane</span>
                             <button
                               type="button"
                               className={exercise.done ? 'sq check is-on' : 'sq check'}
