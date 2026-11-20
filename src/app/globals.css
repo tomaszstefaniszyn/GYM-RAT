@@ -857,6 +857,16 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 .karnet-until { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; font-weight: 650; }
 .karnet-until b { margin-left: auto; color: var(--ink); font-weight: 800; }
 .readonly-value { font-weight: 800; font-size: 16px; }
+.mark-highlight {
+  display: inline;
+  background: var(--yellow-soft);
+  color: var(--ink);
+  font-weight: 800;
+  border-radius: 4px;
+  padding: 1px 5px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
 .used-track { height: 10px; border-radius: 999px; background: #e4dfd6; overflow: hidden; margin-top: 10px; }
 .used-track > span { display: block; height: 100%; background: var(--yellow); border-radius: inherit; }
 .sheet {
