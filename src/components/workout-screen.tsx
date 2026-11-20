@@ -1,13 +1,16 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api-client'
 import type { WorkoutDTO } from '@/lib/types'
 import { usePoll } from '@/lib/use-poll'
-import { CropDialog } from './crop-dialog'
-import { ExerciseLibrary, type LibraryPick } from './exercise-library'
+import type { LibraryPick } from './exercise-library'
+
+const CropDialog = dynamic(() => import('./crop-dialog').then((mod) => mod.CropDialog), { ssr: false })
+const ExerciseLibrary = dynamic(() => import('./exercise-library').then((mod) => mod.ExerciseLibrary), { ssr: false })
 import { BackIcon, CheckIcon, ChevronIcon, DotsIcon, Logo, TrashIcon } from './mark'
 
 type DraftExercise = {

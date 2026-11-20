@@ -4,10 +4,6 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   devIndicators: false,
   serverExternalPackages: ['@electric-sql/pglite', 'postgres', 'nodemailer'],
-  outputFileTracingIncludes: {
-    '/*': ['./public/exercises/**/*'],
-    '/api/**': ['./public/exercises/**/*'],
-  },
   async headers() {
     return [
       {
@@ -18,6 +14,18 @@ const nextConfig: NextConfig = {
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
         ],
+      },
+      {
+        source: '/exercises/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+      },
+      {
+        source: '/icons/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=604800' }],
+      },
+      {
+        source: '/logo.png',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=604800' }],
       },
       {
         source: '/manifest-trener.webmanifest',
