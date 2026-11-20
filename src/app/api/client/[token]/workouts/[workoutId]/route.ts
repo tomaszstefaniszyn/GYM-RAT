@@ -11,6 +11,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string;
   return json(workout)
 }
 
+export async function PATCH(req: Request) {
+  const blocked = rejectCrossSite(req)
+  if (blocked) return blocked
+  return forbidden()
+}
+
 export async function PUT(req: Request) {
   const blocked = rejectCrossSite(req)
   if (blocked) return blocked

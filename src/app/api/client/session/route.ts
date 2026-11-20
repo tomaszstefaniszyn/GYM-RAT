@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   const body = await readBody<{ token?: string }>(req)
   const token = body?.token?.trim() ?? ''
   const client = await getClientByToken(token)
-  if (!client) return json({ error: 'Nieprawidłowy link.' }, 401)
+  if (!client) return json({ error: 'Brak dostępu.' }, 403)
   await setClientCookie(token)
   return json({ ok: true })
 }

@@ -1,4 +1,5 @@
 import { drizzle as drizzlePostgres, type PostgresJsDatabase } from 'drizzle-orm/postgres-js'
+import { seedExerciseLibrary } from './library-seed'
 import { migrateLegacyBlocks } from './migrate'
 import { schema, schemaSql } from './schema'
 
@@ -49,6 +50,7 @@ async function open(): Promise<Database> {
     holder().driver = 'postgres'
     const db = drizzlePostgres(sql, { schema })
     await migrateLegacyBlocks(db)
+    await seedExerciseLibrary(db)
     console.info('[gym-rat] Baza: Postgres')
     return db
   }
@@ -70,6 +72,7 @@ async function open(): Promise<Database> {
   }
   const db = drizzle(client, { schema }) as unknown as Database
   await migrateLegacyBlocks(db)
+  await seedExerciseLibrary(db)
   holder().driver = 'pglite'
   console.info(`[gym-rat] Baza: PGlite (${dir})`)
   return db

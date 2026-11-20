@@ -5,6 +5,10 @@ const GENERIC = 'Nieprawidłowy e-mail lub hasło.'
 
 const jar = new Map()
 
+function trainerUsedClass(summary) {
+  return summary.used === 7 && summary.limit === 8
+}
+
 function fail(message) {
   console.error('FAIL:', message)
   process.exit(1)
@@ -152,7 +156,7 @@ const saved = await req(`/api/trainer/workouts/${plan.data.id}`, {
           {
             cwiczenie: 'Przysiad\nwolno',
             serie: '4',
-            reps: '8',
+            reps: '8 min',
             opis: 'Plecy prosto',
             done: false,
             image: { data: png.toString('base64'), mime: 'image/png' },
@@ -166,12 +170,14 @@ const saved = await req(`/api/trainer/workouts/${plan.data.id}`, {
 assert(saved.status === 200 && saved.data.blocks.length === 2, `zapis planu ${saved.status} ${JSON.stringify(saved.data)}`)
 assert(saved.data.blocks[0].exercises[0].cwiczenie.includes('wolno'), 'zapis nazwy')
 assert(saved.data.blocks[0].exercises[0].opis === 'Plecy prosto', 'zapis opisu')
+assert(saved.data.blocks[0].exercises[0].reps === '8 min', 'reps zostaje tekstem')
 assert(saved.data.blocks[0].exercises[0].hasImage === true, 'zdjęcie ćwiczenia')
 assert(saved.data.blocks[1].name === 'Siła', 'nowy blok')
 const exerciseId = saved.data.blocks[0].exercises[0].id
 
 const seen = await req(`/api/client/${token}/workouts/${plan.data.id}`)
 assert(seen.status === 200 && seen.data.blocks[0].exercises[0].opis === 'Plecy prosto', 'klient widzi plan')
+assert(seen.data.blocks[0].exercises[0].reps === '8 min', 'klient widzi tekstowe reps')
 const image = await fetch(`${base}/api/client/${token}/exercises/${exerciseId}/image`)
 assert(image.status === 200 && (image.headers.get('content-type') || '').includes('image'), 'klient widzi zdjęcie')
 
@@ -214,9 +220,10 @@ for (const [method, path] of [
   assert(denied.status === 403, `${method} ${path} ma dać 403, jest ${denied.status}`)
 }
 
+const beataEmail = `e2e-b-${Date.now()}@example.com`
 const other = await req('/api/trainer/clients', {
   method: 'POST',
-  body: JSON.stringify({ name: 'E2E Beata', email: `e2e-b-${Date.now()}@example.com` }),
+  body: JSON.stringify({ name: 'E2E Beata', email: beataEmail }),
 })
 const otherToken = other.data.inviteUrl.split('/c/')[1]
 const foreign = await req(`/api/client/${otherToken}/workouts/${plan.data.id}`)
@@ -258,6 +265,20 @@ const clientEdit = await req(`/api/client/${token}/profile`, {
   body: JSON.stringify({ ...profileBody, goal: 'Wytrzymałość', injuries: 'kolano' }),
 })
 assert(clientEdit.status === 200 && clientEdit.data.goal === 'Wytrzymałość', 'klient zapisuje swój profil')
+const stealPass = await req(`/api/client/${token}/profile`, {
+  method: 'PATCH',
+  body: JSON.stringify({ ...profileBody, passType: '8', trainingStart: '2020-01-01', passUsed: [true, true, true, true, true, true, true, true], goal: 'HACK' }),
+})
+assert(stealPass.status === 403, `klient nie zmienia karnetu: ${stealPass.status}`)
+const passUntouched = await req(`/api/client/${token}/profile`)
+assert(passUntouched.data.passType === '4', 'rodzaj karnetu bez zmian')
+assert(passUntouched.data.trainingStart === today, 'data startu bez zmian')
+assert(passUntouched.data.passUsed.filter(Boolean).length === 1, 'wejścia bez zmian')
+assert(passUntouched.data.goal === 'Wytrzymałość', 'odrzucona zmiana karnetu nie nadpisuje celu')
+const homePass = await req(`/api/client/${token}`)
+assert(homePass.data.passSummary.used === 1 && homePass.data.passSummary.limit === 4, 'home: wykorzystane')
+assert(homePass.data.passSummary.remainingDays === 30 && homePass.data.passSummary.status === 'active', 'home: ten sam status')
+assert(homePass.data.passSummary.validUntil === formatPl(addDays(today, 30)), 'home: ważny do')
 const trainerSees = await req(`/api/trainer/clients/${clientId}/profile`)
 assert(trainerSees.data.goal === 'Wytrzymałość' && trainerSees.data.injuries === 'kolano', 'trener widzi zapis klienta')
 
@@ -325,6 +346,155 @@ assert(me.status === 200, 'panel pamięta ciasteczko')
 
 const lockedProfile = await fetch(`${base}/api/trainer/clients/${clientId}/profile`, { method: 'PATCH' })
 assert(lockedProfile.status === 401, 'profil trenera wymaga sesji')
+
+const dated = await req(`/api/trainer/workouts/${plan.data.id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ planDate: '2024-03-05' }),
+})
+assert(dated.status === 200 && dated.data.date === '2024-03-05', `zapis daty treningu ${dated.status}`)
+const listed = await req('/api/trainer/clients')
+const listedClient = listed.data.clients.find((item) => item.id === clientId)
+const listedPlan = listedClient?.workouts.find((item) => item.id === plan.data.id)
+assert(listedPlan?.date === '2024-03-05', 'lista pokazuje nową datę')
+const badDate = await req(`/api/trainer/workouts/${plan.data.id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ planDate: '32.13.2020' }),
+})
+assert(badDate.status === 400, 'zła data odrzucona')
+const clientDate = await req(`/api/client/${token}/workouts/${plan.data.id}`, {
+  method: 'PATCH',
+  body: JSON.stringify({ planDate: '2024-01-01' }),
+})
+assert(clientDate.status === 403, 'klient nie zmienia daty treningu')
+const clientRemove = await req(`/api/client/${otherToken}/remove`, { method: 'POST', body: '{}' })
+assert(clientRemove.status === 403, 'klient nie usuwa się z panelu')
+
+const library = await req('/api/trainer/library')
+assert(library.status === 200, `biblioteka ${library.status}`)
+const libraryNames = library.data.exercises.map((item) => item.name)
+assert(libraryNames.length === 15, `biblioteka ma 15 pozycji, jest ${libraryNames.length}`)
+assert(libraryNames.filter((item) => item === 'Toe Touch Crunch').length === 1, 'Toe Touch Crunch raz')
+assert(library.data.exercises.every((item) => item.hasImage), 'każde ćwiczenie startowe ma zdjęcie')
+const manual = await req('/api/trainer/library', {
+  method: 'POST',
+  body: JSON.stringify({ name: 'Deska boczna', image: { data: png.toString('base64'), mime: 'image/png' } }),
+})
+assert(manual.status === 200 && manual.data.exercise.name === 'Deska boczna', 'dodanie ręczne')
+const manualAgain = await req('/api/trainer/library', {
+  method: 'POST',
+  body: JSON.stringify({ name: '  deska   boczna ', image: null }),
+})
+assert(manualAgain.status === 200 && manualAgain.data.exercise.id === manual.data.exercise.id, 'drugie kliknięcie nie tworzy duplikatu')
+const textReps = await req(`/api/trainer/workouts/${plan.data.id}`, {
+  method: 'PUT',
+  body: JSON.stringify({
+    name: 'Trening A',
+    blocks: [
+      {
+        id: saved.data.blocks[0].id,
+        name: 'Rozgrzewka',
+        exercises: [
+          {
+            id: exerciseId,
+            cwiczenie: 'Deska boczna',
+            serie: '3',
+            reps: '30–45 s',
+            opis: 'Bok',
+            done: false,
+            image: { data: png.toString('base64'), mime: 'image/png' },
+          },
+          { cwiczenie: 'Skok', serie: '2', reps: '10/strona', opis: '', done: true },
+          { cwiczenie: 'Finisz', serie: '1', reps: 'AMRAP', opis: '', done: false },
+        ],
+      },
+    ],
+  }),
+})
+assert(textReps.status === 200, `zapis tekstowych reps ${textReps.status} ${JSON.stringify(textReps.data)}`)
+const repsValues = textReps.data.blocks[0].exercises.map((item) => item.reps)
+assert(JSON.stringify(repsValues) === JSON.stringify(['30–45 s', '10/strona', 'AMRAP']), `reps ${repsValues}`)
+assert(textReps.data.blocks[0].exercises[1].done === true, 'zapis reps nie rusza wykonane sąsiada')
+assert(textReps.data.blocks[0].exercises[0].serie === '3', 'serie zostają')
+const dropped = await req(`/api/trainer/library/${manual.data.exercise.id}`, { method: 'DELETE' })
+assert(dropped.status === 200, 'usunięcie z biblioteki')
+const libraryAfter = await req('/api/trainer/library')
+assert(!libraryAfter.data.exercises.some((item) => item.id === manual.data.exercise.id), 'usunięte znika z wyboru')
+assert(libraryAfter.data.exercises.length === 15, 'seed zostaje')
+const kept = await req(`/api/trainer/workouts/${plan.data.id}`)
+assert(kept.data.blocks[0].exercises[0].cwiczenie === 'Deska boczna', 'plan trzyma nazwę po usunięciu z biblioteki')
+assert(kept.data.blocks[0].exercises[0].reps === '30–45 s', 'plan trzyma reps')
+assert(kept.data.blocks[0].exercises[0].hasImage === true, 'plan trzyma zdjęcie')
+const keptImage = await fetch(`${base}/api/client/${token}/exercises/${exerciseId}/image`)
+assert(keptImage.status === 200, 'zdjęcie planu działa po usunięciu z biblioteki')
+
+const beataProfile = await req(`/api/trainer/clients/${other.data.client.id}/profile`, {
+  method: 'PATCH',
+  body: JSON.stringify({
+    name: 'E2E Beata',
+    birthDate: '1992-02-02',
+    weightKg: 60,
+    heightCm: 170,
+    level: 'Początkujący',
+    passType: '8',
+    trainingStart: today,
+    passUsed: [true, true, true, true, true, true, true, false],
+    goal: 'Mobilność',
+    injuries: 'bark',
+  }),
+})
+assert(beataProfile.status === 200, 'profil Beaty')
+const beataPlan = await req(`/api/trainer/clients/${other.data.client.id}/workouts`, { method: 'POST', body: '{}' })
+assert(beataPlan.status === 200, 'trening Beaty')
+const beataSession = await req('/api/client/session', { method: 'POST', body: JSON.stringify({ token: otherToken }) })
+assert(beataSession.status === 200, 'sesja Beaty')
+const archived = await req(`/api/trainer/clients/${other.data.client.id}/archive`, { method: 'POST', body: '{}' })
+assert(archived.status === 200, 'trener ukrywa klienta')
+const afterArchive = await req('/api/trainer/clients')
+assert(!afterArchive.data.clients.some((item) => item.id === other.data.client.id), 'ukryty klient znika z listy')
+const stillThere = await req(`/api/client/${otherToken}`)
+assert(stillThere.status === 403 || stillThere.status === 404, `stary link: ${stillThere.status}`)
+const oldProfile = await req(`/api/client/${otherToken}/profile`)
+assert(oldProfile.status === 403 || oldProfile.status === 404, 'API profilu odcięte')
+const oldWorkout = await req(`/api/client/${otherToken}/workouts/${beataPlan.data.id}`)
+assert(oldWorkout.status === 403 || oldWorkout.status === 404, 'API treningu odcięte')
+const oldSession = await req('/api/client/session', { method: 'POST', body: JSON.stringify({ token: otherToken }) })
+assert(oldSession.status === 403 || oldSession.status === 404, 'sesja odrzucona')
+const oldMe = await req('/api/client/me')
+assert(oldMe.status === 403 || oldMe.status === 404, `aktywna sesja nie działa: ${oldMe.status}`)
+const trainerGone = await req(`/api/trainer/clients/${other.data.client.id}`)
+assert(trainerGone.status === 404, 'ukryty klient nie otwiera się w panelu')
+const restored = await req('/api/trainer/clients', {
+  method: 'POST',
+  body: JSON.stringify({ name: 'Beata', email: beataEmail }),
+})
+assert(restored.status === 200, `ponowne zaproszenie ${restored.status} ${JSON.stringify(restored.data)}`)
+assert(restored.data.client.id === other.data.client.id, 'ten sam rekord klienta')
+const freshToken = restored.data.inviteUrl.split('/c/')[1]
+assert(freshToken && freshToken !== otherToken, 'nowy token')
+const back = await req(`/api/client/${freshToken}`)
+assert(back.status === 200 && back.data.workouts.length === 1, 'nowy link widzi historię treningów')
+const backProfile = await req(`/api/client/${freshToken}/profile`)
+assert(backProfile.data.goal === 'Mobilność' && backProfile.data.passType === '8', 'profil wraca z danymi')
+assert(backProfile.data.passSummary.used === 7 && backProfile.data.passSummary.limit === 8, '7/8 po powrocie')
+assert(backProfile.data.passSummary.status === 'active', '7/8 jest aktywne')
+const dead = await req(`/api/client/${otherToken}/profile`)
+assert(dead.status === 403 || dead.status === 404, 'stary token dalej martwy')
+const listedBeata = (await req('/api/trainer/clients')).data.clients.find((item) => item.id === other.data.client.id)
+assert(listedBeata?.passSummary.used === 7 && listedBeata.passSummary.status === 'active', 'lista trenera ma ten sam karnet')
+assert(trainerUsedClass(listedBeata.passSummary), 'kolor 7/8 na liście')
+
+await req('/api/trainer/logout', { method: 'POST', body: '{}' })
+jar.delete('gr_trainer')
+const relog = await req('/api/trainer/login', {
+  method: 'POST',
+  body: JSON.stringify({ email: 'Czulosc.Joga@gmail.com', password: 'MasterSplinter' }),
+})
+assert(relog.status === 200, 'ponowne logowanie')
+const afterLogin = await req(`/api/trainer/workouts/${plan.data.id}`)
+assert(afterLogin.data.blocks[0].exercises[0].reps === '30–45 s', 'reps po ponownym zalogowaniu')
+assert(afterLogin.data.blocks[0].exercises[2].reps === 'AMRAP', 'AMRAP po ponownym zalogowaniu')
+const libAgain = await req('/api/trainer/library')
+assert(libAgain.data.exercises.length === 15 && libAgain.data.exercises.every((item) => item.hasImage), 'biblioteka po ponownym zalogowaniu')
 
 await req(`/api/trainer/workouts/${plan.data.id}`, { method: 'DELETE' })
 const removed = await req(`/api/trainer/clients/${clientId}`, { method: 'DELETE' })

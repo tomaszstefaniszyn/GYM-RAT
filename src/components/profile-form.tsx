@@ -111,11 +111,13 @@ export function ProfileForm({
   backHref,
   saveUrl,
   avatarUrl,
+  lockPass = false,
 }: {
   initial: ProfileDTO
   backHref: string
   saveUrl: string
   avatarUrl: string
+  lockPass?: boolean
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(initial.name)
@@ -185,6 +187,12 @@ export function ProfileForm({
       setError(parsed.error)
       return
     }
+    const outgoing: Record<string, unknown> = { ...parsed.value }
+    if (lockPass) {
+      delete outgoing.passType
+      delete outgoing.trainingStart
+      delete outgoing.passUsed
+    }
     setBusy(true)
     setError(null)
     try {
@@ -199,7 +207,7 @@ export function ProfileForm({
         const removedData = (await removed.json().catch(() => ({}))) as { error?: string }
         if (!removed.ok) throw new Error(removedData.error || 'Nie udało się usunąć zdjęcia.')
       }
-      const saved = await api<ProfileDTO>(saveUrl, { method: 'PATCH', body: JSON.stringify(parsed.value) })
+      const saved = await api<ProfileDTO>(saveUrl, { method: 'PATCH', body: JSON.stringify(outgoing) })
       applySaved(saved)
       setToast('Zapisano zmiany')
       window.setTimeout(() => setToast(null), 2200)
@@ -323,26 +331,40 @@ export function ProfileForm({
 
         <h2 className="section-label">Trening i zdrowie</h2>
         <div className="stack">
-          <label className="stack-field">
-            Rodzaj karnetu
-            <select
-              className="select"
-              value={passType}
-              onChange={(event) => {
-                const next = event.target.value as PassTypeId | ''
-                setPassType(next)
-                setPassUsed(normalizePassUsed(next || null, passUsed))
-              }}
-            >
-              <option value="">Wybierz</option>
-              {PASS_TYPES.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <DateField label="Data rozpoczęcia treningu" value={trainingStart} onChange={setTrainingStart} />
+          {lockPass ? (
+            <div className="stack-field">
+              <span>Rodzaj karnetu</span>
+              <div className="readonly-value">{passTypeById(passType || null)?.label || '—'}</div>
+            </div>
+          ) : (
+            <label className="stack-field">
+              Rodzaj karnetu
+              <select
+                className="select"
+                value={passType}
+                onChange={(event) => {
+                  const next = event.target.value as PassTypeId | ''
+                  setPassType(next)
+                  setPassUsed(normalizePassUsed(next || null, passUsed))
+                }}
+              >
+                <option value="">Wybierz</option>
+                {PASS_TYPES.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {lockPass ? (
+            <div className="stack-field">
+              <span>Data rozpoczęcia treningu</span>
+              <div className="readonly-value">{trainingStart || '—'}</div>
+            </div>
+          ) : (
+            <DateField label="Data rozpoczęcia treningu" value={trainingStart} onChange={setTrainingStart} />
+          )}
           {status.kind === 'future' && (
             <div className="pass-note">
               <p>Karnet rozpocznie się {status.startsOn}</p>
@@ -373,22 +395,28 @@ export function ProfileForm({
                   {usedCount} z {slots}
                 </span>
               </div>
-              <div className="passes">
-                {passUsed.map((used, index) => (
-                  <span key={index} className="pass-slot">
-                    <button
-                      type="button"
-                      className={used ? 'pass-box is-on' : 'pass-box'}
-                      aria-pressed={used}
-                      aria-label={`Wejście ${index + 1}`}
-                      onClick={() => setPassUsed((prev) => prev.map((item, itemIndex) => (itemIndex === index ? !item : item)))}
-                    >
-                      {used ? <CheckIcon /> : index + 1}
-                    </button>
-                    {used ? <span className="pass-num">{index + 1}</span> : <span className="pass-num">&nbsp;</span>}
-                  </span>
-                ))}
-              </div>
+              {lockPass ? (
+                <div className="used-track" role="img" aria-label={`${usedCount} z ${slots}`}>
+                  <span style={{ width: `${Math.round((usedCount / slots) * 100)}%` }} />
+                </div>
+              ) : (
+                <div className="passes">
+                  {passUsed.map((used, index) => (
+                    <span key={index} className="pass-slot">
+                      <button
+                        type="button"
+                        className={used ? 'pass-box is-on' : 'pass-box'}
+                        aria-pressed={used}
+                        aria-label={`Wejście ${index + 1}`}
+                        onClick={() => setPassUsed((prev) => prev.map((item, itemIndex) => (itemIndex === index ? !item : item)))}
+                      >
+                        {used ? <CheckIcon /> : index + 1}
+                      </button>
+                      {used ? <span className="pass-num">{index + 1}</span> : <span className="pass-num">&nbsp;</span>}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <label className="stack-field">

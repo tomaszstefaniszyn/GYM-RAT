@@ -4,6 +4,10 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   devIndicators: false,
   serverExternalPackages: ['@electric-sql/pglite', 'postgres', 'nodemailer'],
+  outputFileTracingIncludes: {
+    '/*': ['./public/exercises/**/*'],
+    '/api/**': ['./public/exercises/**/*'],
+  },
   async headers() {
     return [
       {
