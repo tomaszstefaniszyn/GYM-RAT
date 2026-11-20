@@ -15,6 +15,7 @@ export default async function ClientProfilePage({ params }: { params: Promise<{ 
         backHref={`/c/${token}`}
         saveUrl={`/api/client/${token}/profile`}
         avatarUrl={`/api/client/${token}/avatar`}
+        lockPass
       />
     </main>
   )

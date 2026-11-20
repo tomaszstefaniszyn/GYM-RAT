@@ -7,7 +7,8 @@ import { api } from '@/lib/api-client'
 import type { WorkoutDTO } from '@/lib/types'
 import { usePoll } from '@/lib/use-poll'
 import { CropDialog } from './crop-dialog'
-import { BackIcon, CheckIcon, ChevronIcon, DotsIcon, Logo, PhotoIcon, TrashIcon } from './mark'
+import { ExerciseLibrary, type LibraryPick } from './exercise-library'
+import { BackIcon, CheckIcon, ChevronIcon, DotsIcon, Logo, TrashIcon } from './mark'
 
 type DraftExercise = {
   key: string
@@ -150,6 +151,7 @@ export function WorkoutScreen({
   const [focusKey, setFocusKey] = useState<string | null>(null)
   const [crop, setCrop] = useState<{ src: string; key: string } | null>(null)
   const [lightbox, setLightbox] = useState<string | null>(null)
+  const [libraryKey, setLibraryKey] = useState<string | null>(null)
   const dirty = useRef(false)
   const pending = useRef(new Set<string>())
   const fileRef = useRef<HTMLInputElement>(null)
@@ -185,6 +187,29 @@ export function WorkoutScreen({
 
   function touch() {
     dirty.current = true
+  }
+
+  function applyLibrary(pick: LibraryPick) {
+    const key = libraryKey
+    if (!key) return
+    setBlocks((prev) =>
+      prev.map((block) => ({
+        ...block,
+        exercises: block.exercises.map((exercise) => {
+          if (exercise.key !== key) return exercise
+          if (exercise.previewUrl) URL.revokeObjectURL(exercise.previewUrl)
+          return {
+            ...exercise,
+            cwiczenie: pick.name,
+            imageFile: pick.image,
+            previewUrl: pick.image ? URL.createObjectURL(pick.image) : undefined,
+            hasImage: Boolean(pick.image),
+          }
+        }),
+      })),
+    )
+    touch()
+    setLibraryKey(null)
   }
 
   function updateBlock(key: string, patch: Partial<DraftBlock>) {
@@ -391,11 +416,7 @@ export function WorkoutScreen({
                         </div>
                       )}
                     </div>
-                  ) : (
-                    <span className="icon-btn dots-inert" aria-hidden="true">
-                      <DotsIcon />
-                    </span>
-                  )}
+                  ) : null}
                 </div>
               </div>
               {block.open && (
@@ -411,19 +432,30 @@ export function WorkoutScreen({
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={src} alt="" />
                     ) : (
-                      <PhotoIcon plus={trainer} />
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src="/exercises/placeholder.svg" alt="" />
                     )
                     return (
                       <article key={exercise.key} className={exercise.done ? 'ex-card is-done' : 'ex-card'}>
                         <div className="ex-top">
                           <span className="ex-badge">{String(index + 1).padStart(2, '0')}</span>
                           {trainer ? (
-                            <NameField
-                              value={exercise.cwiczenie}
-                              label="Nazwa ćwiczenia"
-                              placeholder="Nazwa ćwiczenia"
-                              onChange={(value) => updateExercise(block.key, exercise.key, { cwiczenie: value })}
-                            />
+                            <div className="ex-name-row">
+                              <NameField
+                                value={exercise.cwiczenie}
+                                label="Nazwa ćwiczenia"
+                                placeholder="Nazwa ćwiczenia"
+                                onChange={(value) => updateExercise(block.key, exercise.key, { cwiczenie: value })}
+                              />
+                              <button
+                                type="button"
+                                className="name-pick"
+                                aria-label="Wybierz ćwiczenie z biblioteki"
+                                onClick={() => setLibraryKey(exercise.key)}
+                              >
+                                <ChevronIcon dir="down" />
+                              </button>
+                            </div>
                           ) : (
                             <div className="ex-title">{exercise.cwiczenie}</div>
                           )}
@@ -467,18 +499,22 @@ export function WorkoutScreen({
                               <span className="sq-text">{exercise.serie}</span>
                             )}
                           </label>
-                          <label className="stat">
+                          <label className="stat stat-reps">
                             Reps
                             {trainer ? (
                               <input
-                                className="sq"
+                                className="sq sq-reps"
+                                type="text"
+                                inputMode="text"
+                                autoComplete="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
                                 aria-label="Powtórzenia"
-                                inputMode="numeric"
                                 value={exercise.reps}
                                 onChange={(event) => updateExercise(block.key, exercise.key, { reps: event.target.value })}
                               />
                             ) : (
-                              <span className="sq-text">{exercise.reps}</span>
+                              <span className="sq-text sq-reps-text">{exercise.reps}</span>
                             )}
                           </label>
                           <div className="stat">
@@ -663,6 +699,7 @@ export function WorkoutScreen({
           <img src={lightbox} alt="" onMouseDown={(event) => event.stopPropagation()} />
         </div>
       )}
+      {libraryKey && <ExerciseLibrary onClose={() => setLibraryKey(null)} onPick={applyLibrary} />}
       {crop && (
         <CropDialog
           src={crop.src}

@@ -7,8 +7,10 @@ import {
   readStoredExercise,
   storeAvatar,
   storeExerciseImage,
+  storeLibraryImage,
 } from './avatar-storage'
 import { getDb } from './db'
+import { normalizeExerciseName } from './library-names'
 import {
   ageYears,
   diffDays,
@@ -16,13 +18,14 @@ import {
   parseIsoDate,
   passStatus,
   passTypeById,
+  summarizePass,
   toIso,
   warsawToday,
   type PassTypeId,
   type ProfileInput,
 } from './pass'
-import { blocks, clients, exercises, workouts } from './schema'
-import type { ClientHomeDTO, ClientListItem, ExerciseDTO, ProfileDTO, WorkoutDTO } from './types'
+import { blocks, clients, exercises, libraryExercises, workouts } from './schema'
+import type { ClientHomeDTO, ClientListItem, ExerciseDTO, LibraryExerciseDTO, ProfileDTO, WorkoutDTO } from './types'
 
 function iso(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value)
@@ -101,6 +104,7 @@ function mapProfile(row: typeof clients.$inferSelect): ProfileDTO {
     passType,
     trainingStart: start ? toIso(start) : null,
     pass: passStatus(passType, start, today),
+    passSummary: summarizePass(passType, start, asUsed(row.passUsed), today),
     passUsed: normalizePassUsed(passType, asUsed(row.passUsed)),
     goal: row.goal ?? '',
     injuries: row.injuries ?? '',
@@ -120,6 +124,11 @@ function mapClient(row: typeof clients.$inferSelect, clientWorkouts: (typeof wor
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
     hasAvatar: Boolean(row.avatarData || row.avatarPath),
+    passSummary: summarizePass(
+      (passTypeById(row.passType)?.id ?? null) as PassTypeId | null,
+      parseIsoDate(calendarDate(row.trainingStart)),
+      asUsed(row.passUsed),
+    ),
     workouts: clientWorkouts.map((workout) => ({
       id: workout.id,
       name: workout.name,
@@ -206,6 +215,21 @@ export async function createClient(input: { name: string; email: string }) {
   const db = await getDb()
   const email = input.email.trim().toLowerCase()
   const name = input.name.trim()
+  const [existing] = await db.select().from(clients).where(eq(clients.email, email))
+  if (existing && !existing.removedAt) return { error: 'Ten e-mail jest już na liście.' as const }
+  if (existing?.removedAt) {
+    const [row] = await db
+      .update(clients)
+      .set({
+        name,
+        token: randomBytes(32).toString('base64url'),
+        removedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(clients.id, existing.id))
+      .returning()
+    return { client: row! }
+  }
   const [maxRow] = await db.select({ value: max(clients.position) }).from(clients)
   try {
     const [row] = await db
@@ -267,12 +291,19 @@ export async function updateWorkoutPlanDate(id: string, planDate: string) {
   return { date: shownPlanDate(row) }
 }
 
-/** Hides the client from the trainer list. The row, token and workouts stay. */
+/**
+ * Hides the client and revokes access. History stays.
+ * The previous token stops matching, so the link and the session cookie die.
+ */
 export async function archiveClient(id: string) {
   const db = await getDb()
   const [row] = await db
     .update(clients)
-    .set({ removedAt: new Date(), updatedAt: new Date() })
+    .set({
+      removedAt: new Date(),
+      token: randomBytes(32).toString('base64url'),
+      updatedAt: new Date(),
+    })
     .where(and(eq(clients.id, id), isNull(clients.removedAt)))
     .returning()
   return Boolean(row)
@@ -493,7 +524,7 @@ export async function saveWorkoutPlan(workoutId: string, input: PlanSaveInput): 
             blockId,
             cwiczenie: exercise.cwiczenie.slice(0, 4000),
             serie: exercise.serie.slice(0, 40),
-            reps: exercise.reps.slice(0, 40),
+            reps: exercise.reps.slice(0, 80),
             opis: exercise.opis.slice(0, 4000),
             position: exerciseIndex,
             updatedAt: new Date(),
@@ -568,7 +599,7 @@ export async function getClientByToken(token: string) {
   if (!token || token.length < 20) return null
   const db = await getDb()
   const [person] = await db.select().from(clients).where(eq(clients.token, token))
-  if (!person || !tokenMatches(person.token, token)) return null
+  if (!person || person.removedAt || !tokenMatches(person.token, token)) return null
   return person
 }
 
@@ -581,9 +612,12 @@ export async function getClientHome(token: string): Promise<ClientHomeDTO | null
     .from(workouts)
     .where(eq(workouts.clientId, person.id))
     .orderBy(asc(workouts.position), asc(workouts.createdAt))
+  const today = warsawToday()
+  const passType = (passTypeById(person.passType)?.id ?? null) as PassTypeId | null
   return {
     name: person.name,
     workouts: plans.map((plan) => ({ id: plan.id, name: plan.name })),
+    passSummary: summarizePass(passType, parseIsoDate(calendarDate(person.trainingStart)), asUsed(person.passUsed), today),
   }
 }
 
@@ -604,6 +638,82 @@ export async function setExerciseDoneForToken(token: string, exerciseId: string,
   const [plan] = await db.select().from(workouts).where(eq(workouts.id, row.workoutId))
   if (!plan || plan.clientId !== person.id) return null
   return updateExercise(exerciseId, { done })
+}
+
+function mapLibrary(row: typeof libraryExercises.$inferSelect): LibraryExerciseDTO {
+  return {
+    id: row.id,
+    name: row.name,
+    hasImage: Boolean(row.imageData || row.imagePath),
+    position: row.position,
+  }
+}
+
+export async function listLibrary() {
+  const db = await getDb()
+  const rows = await db
+    .select()
+    .from(libraryExercises)
+    .where(isNull(libraryExercises.deletedAt))
+    .orderBy(asc(libraryExercises.position), asc(libraryExercises.name))
+  return rows.map(mapLibrary)
+}
+
+export async function createLibraryExercise(name: string, image?: { bytes: Buffer; mime: string } | null) {
+  const trimmed = name.trim().replace(/[\s\u00a0]+/g, ' ')
+  if (!trimmed) return { error: 'Podaj nazwę ćwiczenia.' as const }
+  if (trimmed.length > 120) return { error: 'Nazwa jest za długa.' as const }
+  const normalized = normalizeExerciseName(trimmed)
+  const db = await getDb()
+  const active = and(eq(libraryExercises.normalizedName, normalized), isNull(libraryExercises.deletedAt))
+  const [existing] = await db.select().from(libraryExercises).where(active)
+  if (existing) return { exercise: mapLibrary(existing) }
+
+  const id = crypto.randomUUID()
+  const [maxRow] = await db.select({ value: max(libraryExercises.position) }).from(libraryExercises)
+  const stored = image
+    ? await storeLibraryImage(id, image.bytes, image.mime)
+    : { imageData: null, imageMime: null, imagePath: null }
+  try {
+    const [row] = await db
+      .insert(libraryExercises)
+      .values({
+        id,
+        name: trimmed,
+        normalizedName: normalized,
+        position: (maxRow?.value ?? -1) + 1,
+        imageData: stored.imageData,
+        imageMime: stored.imageMime,
+        imagePath: stored.imagePath,
+      })
+      .returning()
+    return { exercise: mapLibrary(row!) }
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error
+    const [row] = await db.select().from(libraryExercises).where(active)
+    if (!row) throw error
+    return { exercise: mapLibrary(row) }
+  }
+}
+
+export async function deleteLibraryExercise(id: string) {
+  const db = await getDb()
+  const [row] = await db
+    .update(libraryExercises)
+    .set({ deletedAt: new Date() })
+    .where(and(eq(libraryExercises.id, id), isNull(libraryExercises.deletedAt)))
+    .returning()
+  return Boolean(row)
+}
+
+export async function getLibraryImage(id: string) {
+  const db = await getDb()
+  const [row] = await db
+    .select()
+    .from(libraryExercises)
+    .where(and(eq(libraryExercises.id, id), isNull(libraryExercises.deletedAt)))
+  if (!row) return null
+  return readStoredExercise(row)
 }
 
 export async function getExerciseImageForToken(token: string, exerciseId: string) {

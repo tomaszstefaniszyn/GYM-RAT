@@ -95,6 +95,105 @@ export function passStatus(passType: PassTypeId | null, start: YMD | null, today
   return { kind: 'active', remaining, validUntil }
 }
 
+export type PassSummary = {
+  used: number
+  limit: number
+  /** Calendar days until the validity date. Null when the pass has no day window. Never negative. */
+  remainingDays: number | null
+  /** DD.MM.RRRR */
+  validUntil: string | null
+  status: 'active' | 'inactive'
+}
+
+/**
+ * One definition of used/limit, remaining days, valid-until and status.
+ * Inactive wins: every entry used, or a dated pass with no days left.
+ * Day counts use calendar dates already resolved in Europe/Warsaw.
+ */
+export function summarizePass(
+  passType: PassTypeId | null,
+  start: YMD | null,
+  passUsed: unknown,
+  today = warsawToday(),
+): PassSummary {
+  const spec = passTypeById(passType)
+  const flags = normalizePassUsed(passType, passUsed)
+  const limit = spec?.slots ?? 0
+  const used = flags.filter(Boolean).length
+  const dated = Boolean(spec && spec.days !== null && start)
+  let remainingDays: number | null = null
+  let validUntil: string | null = null
+  if (spec && spec.days !== null && start) {
+    const expiry = addDays(start, spec.days)
+    validUntil = formatYmd(expiry)
+    remainingDays = Math.max(0, diffDays(today, expiry))
+  }
+  const entriesLeft = limit > 0 && used < limit
+  const daysLeft = remainingDays !== null && remainingDays > 0
+  let status: PassSummary['status'] = 'inactive'
+  if (spec && spec.days === null) status = entriesLeft ? 'active' : 'inactive'
+  else if (dated) status = entriesLeft && daysLeft ? 'active' : 'inactive'
+  return { used, limit, remainingDays, validUntil, status }
+}
+
+export type Tone = 'tone-ink' | 'tone-warn' | 'tone-info' | 'tone-muted'
+
+/** Client home: 3/4 and 7/8 are orange. Other counts stay the default ink. */
+export function clientUsedTone(used: number, limit: number): Tone {
+  if ((limit === 4 && used === 3) || (limit === 8 && used === 7)) return 'tone-warn'
+  return 'tone-ink'
+}
+
+/** Client home: 1–7 days left are orange. 0 and 8+ stay the default ink. */
+export function clientDaysTone(days: number): Tone {
+  if (days >= 1 && days <= 7) return 'tone-warn'
+  return 'tone-ink'
+}
+
+/** Trainer list: blue, orange at 3/4 or 7/8, grey when every entry is used. */
+export function trainerUsedTone(used: number, limit: number): Tone {
+  if (limit > 0 && used >= limit) return 'tone-muted'
+  if ((limit === 4 && used === 3) || (limit === 8 && used === 7)) return 'tone-warn'
+  return 'tone-info'
+}
+
+/** Trainer list: blue from 10 days, orange at 1–9, grey at 0. */
+export function trainerDaysTone(days: number): Tone {
+  if (days <= 0) return 'tone-muted'
+  if (days <= 9) return 'tone-warn'
+  return 'tone-info'
+}
+
+export function daysWord(days: number) {
+  return days === 1 ? 'dzień' : 'dni'
+}
+
+/** True when a client payload tries to change pass type, start date or used entries. */
+export function clientPassChangeRejected(
+  body: unknown,
+  existing: { passType: string | null; trainingStart: string | null; passUsed: boolean[] },
+) {
+  if (!body || typeof body !== 'object') return false
+  const record = body as Record<string, unknown>
+  if ('passType' in record) {
+    const raw = record.passType
+    if (raw !== null && raw !== undefined && raw !== '' && typeof raw !== 'string') return true
+    const next = raw === null || raw === undefined || raw === '' ? null : raw
+    if (next !== existing.passType) return true
+  }
+  if ('trainingStart' in record) {
+    const parsed = parseAnyDate(record.trainingStart)
+    if (parsed === undefined) return true
+    const iso = parsed ? toIso(parsed) : null
+    if (iso !== existing.trainingStart) return true
+  }
+  if ('passUsed' in record) {
+    const next = normalizePassUsed((existing.passType as PassTypeId | null) ?? null, record.passUsed)
+    if (next.length !== existing.passUsed.length || next.some((flag, index) => flag !== existing.passUsed[index])) return true
+  }
+  return false
+}
+
 export function remainingLabel(days: number) {
   if (days === 1) return 'Pozostał 1 dzień'
   return `Pozostało ${days} dni`

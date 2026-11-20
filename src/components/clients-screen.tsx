@@ -1,14 +1,15 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api-client'
-import { formatIsoDatePl } from '@/lib/dates'
-import type { ClientListItem } from '@/lib/types'
+import { daysWord, trainerDaysTone, trainerUsedTone } from '@/lib/pass'
+import type { ClientListItem, PassSummary } from '@/lib/types'
 import { usePoll } from '@/lib/use-poll'
 import { Avatar } from './avatar'
 import { InviteDialog } from './dialogs'
 import { ChevronIcon, DotsIcon, Logo, LogoutIcon, PlusIcon, TrashIcon } from './mark'
+import { useHorizontalSwipe } from './use-swipe'
 
 const REVEAL = 96
 
@@ -18,7 +19,6 @@ export function ClientsScreen({ initial }: { initial: ClientListItem[] }) {
   const [toast, setToast] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [menuId, setMenuId] = useState<string | null>(null)
-  const [dateEdit, setDateEdit] = useState<{ workoutId: string; date: string; name: string } | null>(null)
   const [confirm, setConfirm] = useState<ClientListItem | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,31 +46,6 @@ export function ClientsScreen({ initial }: { initial: ClientListItem[] }) {
     window.addEventListener('pointerdown', close)
     return () => window.removeEventListener('pointerdown', close)
   }, [openId, menuId])
-
-  async function saveDate() {
-    if (!dateEdit) return
-    setBusy(true)
-    setError(null)
-    try {
-      const saved = await api<{ date: string }>(`/api/trainer/workouts/${dateEdit.workoutId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ planDate: dateEdit.date }),
-      })
-      setClients((prev) =>
-        prev.map((client) => ({
-          ...client,
-          workouts: client.workouts.map((workout) =>
-            workout.id === dateEdit.workoutId ? { ...workout, date: saved.date } : workout,
-          ),
-        })),
-      )
-      setDateEdit(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Nie zapisano daty.')
-    } finally {
-      setBusy(false)
-    }
-  }
 
   async function removeClient() {
     if (!confirm) return
@@ -117,12 +92,6 @@ export function ClientsScreen({ initial }: { initial: ClientListItem[] }) {
                 setOpenId(null)
                 setMenuId((current) => (current === client.id ? null : client.id))
               }}
-              onDate={(workout) => {
-                setOpenId(null)
-                setMenuId(null)
-                setError(null)
-                setDateEdit({ workoutId: workout.id, date: workout.date, name: workout.name })
-              }}
               onAskRemove={() => {
                 setMenuId(null)
                 setConfirm(client)
@@ -149,40 +118,6 @@ export function ClientsScreen({ initial }: { initial: ClientListItem[] }) {
           onToast={showToast}
         />
       )}
-      {dateEdit && (
-        <div className="backdrop" onMouseDown={() => setDateEdit(null)}>
-          <div
-            className="dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="date-title"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <h2 id="date-title">Data treningu</h2>
-            <p className="hint" style={{ textAlign: 'center', marginBottom: 12 }}>
-              {dateEdit.name}
-            </p>
-            <label className="stack-field">
-              Data
-              <input
-                className="control"
-                type="date"
-                value={dateEdit.date}
-                onChange={(event) => setDateEdit({ ...dateEdit, date: event.target.value })}
-              />
-            </label>
-            {error && <p className="error">{error}</p>}
-            <div className="crop-actions">
-              <button type="button" className="btn-ghost" onClick={() => setDateEdit(null)}>
-                Anuluj
-              </button>
-              <button type="button" className="btn-yellow" disabled={busy || !dateEdit.date} onClick={() => void saveDate()}>
-                Zapisz
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {confirm && (
         <div className="backdrop" onMouseDown={() => setConfirm(null)}>
           <div
@@ -194,7 +129,7 @@ export function ClientsScreen({ initial }: { initial: ClientListItem[] }) {
           >
             <h2 id="remove-title">Usunąć klienta?</h2>
             <p style={{ textAlign: 'center', lineHeight: 1.45 }}>
-              Czy na pewno chcesz usunąć klienta {confirm.name} z panelu?
+              Czy na pewno chcesz usunąć tego klienta? Klient utraci dostęp do swojego panelu do czasu ponownego zaproszenia przez trenera.
             </p>
             {error && <p className="error">{error}</p>}
             <div className="crop-actions">
@@ -224,6 +159,35 @@ export function ClientsScreen({ initial }: { initial: ClientListItem[] }) {
   )
 }
 
+function remainCopy(days: number) {
+  if (days === 1) return { lead: 'Pozostał', word: 'dzień' }
+  return { lead: 'Pozostało', word: daysWord(days) }
+}
+
+function PassLines({ summary }: { summary: PassSummary }) {
+  if (!summary.limit) return <span className="meta-line">Brak karnetu</span>
+  const days = summary.remainingDays
+  const remain = days === null ? null : remainCopy(days)
+  return (
+    <>
+      <span className="meta-line">
+        Wykorzystano <b className={trainerUsedTone(summary.used, summary.limit)}>{summary.used}/{summary.limit}</b>
+        {remain && days !== null && (
+          <>
+            {' · '}
+            {remain.lead} <b className={trainerDaysTone(days)}>{days}</b> {remain.word}
+          </>
+        )}
+      </span>
+      {summary.validUntil && (
+        <span className="meta-line">
+          Karnet ważny do <b className="tone-ink">{summary.validUntil}</b>
+        </span>
+      )}
+    </>
+  )
+}
+
 function ClientRow({
   client,
   open,
@@ -231,7 +195,6 @@ function ClientRow({
   onOpen,
   onClose,
   onMenu,
-  onDate,
   onAskRemove,
 }: {
   client: ClientListItem
@@ -240,17 +203,10 @@ function ClientRow({
   onOpen: () => void
   onClose: () => void
   onMenu: () => void
-  onDate: (workout: ClientListItem['workouts'][number]) => void
   onAskRemove: () => void
 }) {
-  const [shift, setShift] = useState(0)
-  const [dragging, setDragging] = useState(false)
-  const start = useRef<{ x: number; y: number; axis: 'x' | 'y' | null; pointer: number } | null>(null)
-  const suppress = useRef(false)
-
-  useEffect(() => {
-    if (!dragging) setShift(open ? -REVEAL : 0)
-  }, [open, dragging])
+  const { shift, dragging, suppress, bind } = useHorizontalSwipe(open, onOpen, onClose, REVEAL)
+  const active = client.passSummary.status === 'active'
 
   return (
     <li className={menu ? 'swipe-host is-menu' : 'swipe-host'} data-swipe="">
@@ -258,48 +214,7 @@ function ClientRow({
         <TrashIcon />
         Usuń
       </button>
-      <div
-        className={dragging ? 'swipe-face is-drag' : 'swipe-face'}
-        style={{ transform: `translateX(${shift}px)` }}
-        onPointerDown={(event) => {
-          if (event.button !== 0) return
-          start.current = { x: event.clientX, y: event.clientY, axis: null, pointer: event.pointerId }
-          suppress.current = false
-          setDragging(true)
-          event.currentTarget.setPointerCapture(event.pointerId)
-        }}
-        onPointerMove={(event) => {
-          const origin = start.current
-          if (!origin || origin.pointer !== event.pointerId) return
-          const dx = event.clientX - origin.x
-          const dy = event.clientY - origin.y
-          if (!origin.axis) {
-            if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
-            origin.axis = Math.abs(dx) > Math.abs(dy) * 1.25 ? 'x' : 'y'
-          }
-          if (origin.axis !== 'x') return
-          suppress.current = true
-          const base = open ? -REVEAL : 0
-          setShift(Math.min(0, Math.max(-REVEAL, base + dx)))
-        }}
-        onPointerUp={(event) => {
-          const origin = start.current
-          if (!origin || origin.pointer !== event.pointerId) return
-          if (origin.axis === 'x') {
-            const base = open ? -REVEAL : 0
-            const next = Math.min(0, Math.max(-REVEAL, base + (event.clientX - origin.x)))
-            if (next < -REVEAL / 2) onOpen()
-            else onClose()
-          }
-          start.current = null
-          setDragging(false)
-        }}
-        onPointerCancel={() => {
-          start.current = null
-          setDragging(false)
-          setShift(open ? -REVEAL : 0)
-        }}
-      >
+      <div className={dragging ? 'swipe-face is-drag' : 'swipe-face'} style={{ transform: `translateX(${shift}px)` }} {...bind}>
         <div className="client-row">
           <Link
             href={`/trener/klienci/${client.id}`}
@@ -317,29 +232,15 @@ function ClientRow({
               src={client.hasAvatar ? `/api/trainer/clients/${client.id}/avatar?v=${encodeURIComponent(client.updatedAt)}` : null}
             />
             <span className="client-copy">
-              <span className="client-name">{client.name}</span>
+              <span className="name-line">
+                <span className="client-name">{client.name}</span>
+                <span className={active ? 'status-pill is-on' : 'status-pill is-off'}>
+                  <span className="status-dot" aria-hidden="true" />
+                  {active ? 'Aktywny' : 'Nieaktywny'}
+                </span>
+              </span>
               <span className="client-meta">
-                {client.workouts.length === 0 ? (
-                  <span>Brak treningów</span>
-                ) : (
-                  client.workouts.map((workout) => (
-                    <span key={workout.id} className="meta-line">
-                      {workout.name} ·{' '}
-                      <button
-                        type="button"
-                        className="date-hit"
-                        onPointerDown={(event) => event.stopPropagation()}
-                        onClick={(event) => {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          onDate(workout)
-                        }}
-                      >
-                        {formatIsoDatePl(workout.date)}
-                      </button>
-                    </span>
-                  ))
-                )}
+                <PassLines summary={client.passSummary} />
               </span>
             </span>
             <ChevronIcon />

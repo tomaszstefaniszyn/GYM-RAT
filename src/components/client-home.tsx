@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ApiError, api } from '@/lib/api-client'
-import type { ClientHomeDTO } from '@/lib/types'
+import { clientDaysTone, clientUsedTone, daysWord } from '@/lib/pass'
+import type { ClientHomeDTO, PassSummary } from '@/lib/types'
 import { usePoll } from '@/lib/use-poll'
-import { ArrowIcon, DumbbellIcon, Logo, PersonIcon } from './mark'
+import { ArrowIcon, CalendarIcon, DumbbellIcon, Logo, PersonIcon } from './mark'
 
 const STORAGE_KEY = 'gr_client_token'
 
@@ -40,7 +41,7 @@ export function ClientHome({ token, initial }: { token: string; initial: ClientH
     try {
       setHome(await api<ClientHomeDTO>(`/api/client/${token}`))
     } catch (error) {
-      if (error instanceof ApiError && error.status === 404) setGone(true)
+      if (error instanceof ApiError && (error.status === 404 || error.status === 403)) setGone(true)
     }
   }, 3000)
 
@@ -100,7 +101,47 @@ export function ClientHome({ token, initial }: { token: string; initial: ClientH
           ))}
         </div>
       )}
+      <PassCard summary={home.passSummary} />
     </>
+  )
+}
+
+function PassCard({ summary }: { summary: PassSummary }) {
+  const days = summary.remainingDays
+  const active = summary.status === 'active'
+  return (
+    <section>
+      <div className="pass-section-head">
+        <h2 className="section-title">Twój karnet</h2>
+        <span className={active ? 'status-pill is-on' : 'status-pill is-off'}>
+          <span className="status-dot" aria-hidden="true" />
+          {active ? 'Aktywny' : 'Nieaktywny'}
+        </span>
+      </div>
+      <article className="karnet-card">
+        <div className="karnet-metrics">
+          <div>
+            <div className={`karnet-figure ${summary.limit ? clientUsedTone(summary.used, summary.limit) : 'tone-ink'}`}>
+              {summary.limit ? `${summary.used}/${summary.limit}` : '—'}
+            </div>
+            <div className="karnet-caption">Wykorzystane treningi</div>
+          </div>
+          <div className="karnet-divider" aria-hidden="true" />
+          <div>
+            <div className={`karnet-figure ${days === null ? 'tone-ink' : clientDaysTone(days)}`}>
+              {days === null ? '—' : `${days} ${daysWord(days)}`}
+            </div>
+            <div className="karnet-caption">Pozostało</div>
+          </div>
+        </div>
+        <div className="karnet-rule" />
+        <div className="karnet-until">
+          <CalendarIcon />
+          <span>Ważny do</span>
+          <b>{summary.validUntil ?? '—'}</b>
+        </div>
+      </article>
+    </section>
   )
 }
 

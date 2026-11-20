@@ -1,6 +1,6 @@
 import { getProfileByToken, updateProfile } from '@/lib/data'
 import { json, readBody, rejectCrossSite } from '@/lib/http'
-import { validateProfile } from '@/lib/pass'
+import { clientPassChangeRejected, validateProfile } from '@/lib/pass'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,7 +23,21 @@ export async function PATCH(req: Request, ctx: Ctx) {
   const body = await readBody<unknown>(req)
   const parsed = validateProfile(body)
   if (!parsed.ok) return json({ error: parsed.error }, 400)
-  const profile = await updateProfile(existing.id, parsed.value)
+  if (
+    clientPassChangeRejected(body, {
+      passType: existing.passType,
+      trainingStart: existing.trainingStart,
+      passUsed: existing.passUsed,
+    })
+  ) {
+    return json({ error: 'Nie możesz zmieniać danych karnetu.' }, 403)
+  }
+  const profile = await updateProfile(existing.id, {
+    ...parsed.value,
+    passType: existing.passType,
+    trainingStart: existing.trainingStart,
+    passUsed: existing.passUsed,
+  })
   if (!profile) return json({ error: 'Nie znaleziono planu.' }, 404)
   return json(profile)
 }

@@ -62,7 +62,19 @@ export const exercises = pgTable('exercises', {
   updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 })
 
-export const schema = { clients, workouts, blocks, exercises }
+export const libraryExercises = pgTable('library_exercises', {
+  id: uuid('id').primaryKey(),
+  name: text('name').notNull(),
+  normalizedName: text('normalized_name').notNull(),
+  imageData: text('image_data'),
+  imageMime: text('image_mime'),
+  imagePath: text('image_path'),
+  position: integer('position').notNull().default(0),
+  deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+})
+
+export const schema = { clients, workouts, blocks, exercises, libraryExercises }
 
 export const schemaSql = `
 CREATE TABLE IF NOT EXISTS clients (
@@ -132,4 +144,22 @@ CREATE INDEX IF NOT EXISTS exercises_block_id_idx ON exercises(block_id);
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS removed_at timestamptz;
 ALTER TABLE workouts ADD COLUMN IF NOT EXISTS plan_date date;
 UPDATE workouts SET plan_date = (created_at AT TIME ZONE 'Europe/Warsaw')::date WHERE plan_date IS NULL;
+
+ALTER TABLE exercises ALTER COLUMN reps TYPE text USING reps::text;
+
+CREATE TABLE IF NOT EXISTS library_exercises (
+  id uuid PRIMARY KEY,
+  name text NOT NULL,
+  normalized_name text NOT NULL,
+  image_data text,
+  image_mime text,
+  image_path text,
+  position integer NOT NULL DEFAULT 0,
+  deleted_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS library_exercises_active_name_idx
+  ON library_exercises (normalized_name)
+  WHERE deleted_at IS NULL;
 `

@@ -9,6 +9,6 @@ export async function GET() {
   const token = await getClientTokenFromCookie()
   if (!token) return json({ error: 'Brak sesji.' }, 401)
   const home = await getClientHome(token)
-  if (!home) return json({ error: 'Brak sesji.' }, 401)
+  if (!home) return json({ error: 'Brak dostępu.' }, 403)
   return json(home)
 }

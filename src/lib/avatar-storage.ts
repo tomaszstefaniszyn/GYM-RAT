@@ -59,6 +59,11 @@ export async function storeExerciseImage(exerciseId: string, bytes: Buffer, mime
   return { imageData: stored.data, imageMime: stored.mime, imagePath: stored.path }
 }
 
+export async function storeLibraryImage(libraryId: string, bytes: Buffer, mime: string) {
+  const stored = await storeBinary(`library/${libraryId}.${extension(mime)}`, bytes, mime)
+  return { imageData: stored.data, imageMime: stored.mime, imagePath: stored.path }
+}
+
 export async function readStoredBinary(file: { data: string | null; mime: string | null; path: string | null }) {
   if (file.path) {
     const cfg = supabaseStorageConfig()

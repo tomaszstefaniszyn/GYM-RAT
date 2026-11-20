@@ -1,4 +1,6 @@
-import type { PassStatus, PassTypeId } from './pass'
+import type { PassStatus, PassSummary, PassTypeId } from './pass'
+
+export type { PassSummary }
 
 export type WorkoutPreview = {
   id: string
@@ -16,6 +18,7 @@ export type ClientListItem = {
   updatedAt: string
   hasAvatar: boolean
   workouts: WorkoutPreview[]
+  passSummary: PassSummary
 }
 
 export type ProfileDTO = {
@@ -32,6 +35,7 @@ export type ProfileDTO = {
   passType: PassTypeId | null
   trainingStart: string | null
   pass: PassStatus
+  passSummary: PassSummary
   passUsed: boolean[]
   goal: string
   injuries: string
@@ -67,4 +71,12 @@ export type WorkoutDTO = {
 export type ClientHomeDTO = {
   name: string
   workouts: { id: string; name: string }[]
+  passSummary: PassSummary
+}
+
+export type LibraryExerciseDTO = {
+  id: string
+  name: string
+  hasImage: boolean
+  position: number
 }
