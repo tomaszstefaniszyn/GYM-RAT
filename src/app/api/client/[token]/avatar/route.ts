@@ -10,11 +10,11 @@ type Ctx = { params: Promise<{ token: string }> }
 
 export async function GET(_req: Request, ctx: Ctx) {
   const { token } = await ctx.params
-  const client = await getClientByToken(token)
+  const client = await getClientByToken(token, { migrate: false })
   if (!client) return json({ error: 'Nie znaleziono planu.' }, 404)
   const file = await readStoredAvatar(client)
   if (!file) return json({ error: 'Brak zdjęcia.' }, 404)
-  return fileResponse(file)
+  return fileResponse(file, _req)
 }
 
 export async function POST(req: Request, ctx: Ctx) {

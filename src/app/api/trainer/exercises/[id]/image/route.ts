@@ -16,11 +16,11 @@ export async function GET(_req: Request, ctx: Ctx) {
   const session = await trainerGuard()
   if (session instanceof Response) return session
   const { id } = await ctx.params
-  const row = await getExerciseRow(id)
+  const row = await getExerciseRow(id, { migrate: false })
   if (!row) return json({ error: 'Nie znaleziono ćwiczenia.' }, 404)
   const file = await readStoredExercise(row)
   if (!file) return json({ error: 'Brak zdjęcia.' }, 404)
-  return fileResponse(file)
+  return fileResponse(file, _req)
 }
 
 export async function POST(req: Request, ctx: Ctx) {

@@ -12,5 +12,5 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params
   const file = await getLibraryImage(id)
   if (!file) return json({ error: 'Brak zdjęcia.' }, 404)
-  return fileResponse(file)
+  return fileResponse(file, _req)
 }

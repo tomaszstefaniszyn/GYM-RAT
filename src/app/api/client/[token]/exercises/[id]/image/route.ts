@@ -11,7 +11,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   const { token, id } = await ctx.params
   const file = await getExerciseImageForToken(token, id)
   if (!file) return json({ error: 'Brak zdjęcia.' }, 404)
-  return fileResponse(file)
+  return fileResponse(file, _req)
 }
 
 export async function POST(req: Request) {

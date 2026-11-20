@@ -9,8 +9,8 @@ import {
   storeExerciseImage,
   storeLibraryImage,
 } from './avatar-storage'
-import { getDb } from './db'
-import { normalizeExerciseName } from './library-names'
+import { getDb, type DbOptions } from './db'
+import { normalizeExerciseName, seedExercisePhotoUrl } from './library-names'
 import {
   ageYears,
   diffDays,
@@ -173,8 +173,8 @@ export async function getClientDetail(id: string) {
   return mapClient(person, plans)
 }
 
-export async function getClientRow(id: string) {
-  const db = await getDb()
+export async function getClientRow(id: string, options?: DbOptions) {
+  const db = await getDb(options)
   const [person] = await db.select().from(clients).where(eq(clients.id, id))
   return person ?? null
 }
@@ -437,8 +437,8 @@ export async function deleteExercise(id: string) {
   return row
 }
 
-export async function getExerciseRow(id: string) {
-  const db = await getDb()
+export async function getExerciseRow(id: string, options?: DbOptions) {
+  const db = await getDb(options)
   const [row] = await db.select().from(exercises).where(eq(exercises.id, id))
   return row ?? null
 }
@@ -595,9 +595,9 @@ export async function saveWorkoutPlan(workoutId: string, input: PlanSaveInput): 
   return fresh
 }
 
-export async function getClientByToken(token: string) {
+export async function getClientByToken(token: string, options?: DbOptions) {
   if (!token || token.length < 20) return null
-  const db = await getDb()
+  const db = await getDb(options)
   const [person] = await db.select().from(clients).where(eq(clients.token, token))
   if (!person || person.removedAt || !tokenMatches(person.token, token)) return null
   return person
@@ -640,11 +640,25 @@ export async function setExerciseDoneForToken(token: string, exerciseId: string,
   return updateExercise(exerciseId, { done })
 }
 
+function libraryImageUrl(row: typeof libraryExercises.$inferSelect) {
+  if (row.imagePath?.startsWith('/')) return row.imagePath
+  const seed = seedExercisePhotoUrl(row.normalizedName)
+  const custom = Boolean(row.imageData || (row.imagePath && !row.imagePath.startsWith('/')))
+  if (!custom && seed) return seed
+  if (custom) {
+    const version = row.createdAt instanceof Date ? row.createdAt.getTime() : '1'
+    return `/api/trainer/library/${row.id}/image?v=${version}`
+  }
+  return seed
+}
+
 function mapLibrary(row: typeof libraryExercises.$inferSelect): LibraryExerciseDTO {
+  const imageUrl = libraryImageUrl(row)
   return {
     id: row.id,
     name: row.name,
-    hasImage: Boolean(row.imageData || row.imagePath),
+    hasImage: Boolean(imageUrl),
+    imageUrl,
     position: row.position,
   }
 }
@@ -707,7 +721,7 @@ export async function deleteLibraryExercise(id: string) {
 }
 
 export async function getLibraryImage(id: string) {
-  const db = await getDb()
+  const db = await getDb({ migrate: false })
   const [row] = await db
     .select()
     .from(libraryExercises)
@@ -717,11 +731,11 @@ export async function getLibraryImage(id: string) {
 }
 
 export async function getExerciseImageForToken(token: string, exerciseId: string) {
-  const person = await getClientByToken(token)
+  const person = await getClientByToken(token, { migrate: false })
   if (!person) return null
-  const row = await getExerciseRow(exerciseId)
+  const row = await getExerciseRow(exerciseId, { migrate: false })
   if (!row) return null
-  const db = await getDb()
+  const db = await getDb({ migrate: false })
   const [plan] = await db.select().from(workouts).where(eq(workouts.id, row.workoutId))
   if (!plan || plan.clientId !== person.id) return null
   return readStoredExercise(row)

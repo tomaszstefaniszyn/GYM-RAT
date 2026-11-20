@@ -26,3 +26,11 @@ export function exerciseFileKey(filename: string) {
   const base = filename.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '')
   return normalizeExerciseName(base)
 }
+
+/** Public URL for a seeded photo. Null when the name is not one of the 15 starters. */
+export function seedExercisePhotoUrl(name: string): string | null {
+  const key = normalizeExerciseName(name)
+  const canonical = LIBRARY_EXERCISES.find((item) => normalizeExerciseName(item) === key)
+  if (!canonical) return null
+  return `/exercises/${encodeURIComponent(`${canonical}.webp`)}`
+}

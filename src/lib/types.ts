@@ -78,5 +78,7 @@ export type LibraryExerciseDTO = {
   id: string
   name: string
   hasImage: boolean
+  /** Static file or a versioned image URL. Seeded photos never touch the database. */
+  imageUrl: string | null
   position: number
 }

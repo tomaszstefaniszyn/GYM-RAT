@@ -1,6 +1,11 @@
 'use client'
 
-export default function Error({ reset }: { error: Error; reset: () => void }) {
+import { useEffect } from 'react'
+
+export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => {
+    console.error('[gym-rat] boundary', error.digest ?? '', error)
+  }, [error])
   return (
     <main className="shell message-page">
       <p>Coś poszło nie tak.</p>

@@ -430,10 +430,10 @@ export function WorkoutScreen({
                         : null)
                     const photo = src ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={src} alt="" />
+                      <img src={src} alt="" loading="lazy" decoding="async" />
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src="/exercises/placeholder.svg" alt="" />
+                      <img src="/exercises/placeholder.svg" alt="" loading="lazy" decoding="async" />
                     )
                     return (
                       <article key={exercise.key} className={exercise.done ? 'ex-card is-done' : 'ex-card'}>

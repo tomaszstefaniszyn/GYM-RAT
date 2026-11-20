@@ -30,11 +30,12 @@ export async function readFormImage(req: Request) {
   return { bytes, mime }
 }
 
-export function fileResponse(file: { bytes: Buffer; mime: string }) {
-  return new Response(new Uint8Array(file.bytes), {
-    headers: {
-      'Content-Type': file.mime,
-      'Cache-Control': 'private, max-age=3600',
-    },
-  })
+export function fileResponse(file: { bytes: Buffer; mime: string }, req?: Request) {
+  const version = req ? new URL(req.url).searchParams.get('v') : null
+  const headers: Record<string, string> = {
+    'Content-Type': file.mime,
+    'Cache-Control': version ? 'public, max-age=31536000, immutable' : 'private, max-age=3600',
+  }
+  if (version) headers.ETag = `"${version}"`
+  return new Response(new Uint8Array(file.bytes), { headers })
 }

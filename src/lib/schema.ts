@@ -145,8 +145,6 @@ ALTER TABLE clients ADD COLUMN IF NOT EXISTS removed_at timestamptz;
 ALTER TABLE workouts ADD COLUMN IF NOT EXISTS plan_date date;
 UPDATE workouts SET plan_date = (created_at AT TIME ZONE 'Europe/Warsaw')::date WHERE plan_date IS NULL;
 
-ALTER TABLE exercises ALTER COLUMN reps TYPE text USING reps::text;
-
 CREATE TABLE IF NOT EXISTS library_exercises (
   id uuid PRIMARY KEY,
   name text NOT NULL,
@@ -162,4 +160,9 @@ CREATE TABLE IF NOT EXISTS library_exercises (
 CREATE UNIQUE INDEX IF NOT EXISTS library_exercises_active_name_idx
   ON library_exercises (normalized_name)
   WHERE deleted_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS schema_version (
+  id integer PRIMARY KEY,
+  version integer NOT NULL
+);
 `

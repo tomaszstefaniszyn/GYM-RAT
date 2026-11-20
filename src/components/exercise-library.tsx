@@ -59,9 +59,9 @@ export function ExerciseLibrary({ onClose, onPick }: { onClose: () => void; onPi
 
   async function choose(item: LibraryExerciseDTO) {
     let image: Blob | null = null
-    if (item.hasImage) {
+    if (item.imageUrl) {
       try {
-        const res = await fetch(`/api/trainer/library/${item.id}/image`, { cache: 'no-store' })
+        const res = await fetch(item.imageUrl)
         if (res.ok) image = await res.blob()
       } catch {
         image = null
@@ -245,7 +245,7 @@ function LibraryRow({
   onRemove: () => void
 }) {
   const { shift, dragging, suppress, bind } = useHorizontalSwipe(open, onOpen, onClose, 88)
-  const src = item.hasImage ? `/api/trainer/library/${item.id}/image` : '/exercises/placeholder.svg'
+  const src = item.imageUrl || '/exercises/placeholder.svg'
   return (
     <li className={menu ? 'swipe-host is-menu' : 'swipe-host'} data-swipe="">
       <button type="button" className="swipe-reveal" onClick={onRemove}>
@@ -267,7 +267,7 @@ function LibraryRow({
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="lib-photo" src={src} alt="" />
+            <img className="lib-photo" src={src} alt="" loading="lazy" decoding="async" />
             <span className="lib-name">{item.name}</span>
           </button>
           <div className="row-menu-wrap">

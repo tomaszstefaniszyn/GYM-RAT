@@ -13,11 +13,11 @@ export async function GET(_req: Request, ctx: Ctx) {
   const session = await trainerGuard()
   if (session instanceof Response) return session
   const { id } = await ctx.params
-  const client = await getClientRow(id)
+  const client = await getClientRow(id, { migrate: false })
   if (!client) return json({ error: 'Nie znaleziono klienta.' }, 404)
   const file = await readStoredAvatar(client)
   if (!file) return json({ error: 'Brak zdjęcia.' }, 404)
-  return fileResponse(file)
+  return fileResponse(file, _req)
 }
 
 export async function POST(req: Request, ctx: Ctx) {
