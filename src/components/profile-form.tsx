@@ -336,7 +336,9 @@ export function ProfileForm({
           {lockPass ? (
             <div className="stack-field">
               <span>Rodzaj karnetu</span>
-              <div className="readonly-value">{passTypeById(passType || null)?.label || '—'}</div>
+              <div className="readonly-value">
+                <span className="mark-highlight">{passTypeById(passType || null)?.label || '—'}</span>
+              </div>
             </div>
           ) : (
             <label className="stack-field">
@@ -362,7 +364,9 @@ export function ProfileForm({
           {lockPass ? (
             <div className="stack-field">
               <span>Data rozpoczęcia treningu</span>
-              <div className="readonly-value">{trainingStart || '—'}</div>
+              <div className="readonly-value">
+                <span className="mark-highlight">{trainingStart || '—'}</span>
+              </div>
             </div>
           ) : (
             <DateField label="Data rozpoczęcia treningu" value={trainingStart} onChange={setTrainingStart} />
