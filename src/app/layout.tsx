@@ -9,6 +9,8 @@ const inter = Inter({
   display: 'swap',
 })
 
+export const preferredRegion = 'fra1'
+
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,

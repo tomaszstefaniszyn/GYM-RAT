@@ -152,24 +152,24 @@ function nextWorkoutName(names: string[]) {
 
 export async function listClients(): Promise<ClientListItem[]> {
   const db = await getDb()
-  const people = await db
-    .select()
-    .from(clients)
-    .where(isNull(clients.removedAt))
-    .orderBy(asc(clients.position), asc(clients.createdAt))
-  const plans = await db.select().from(workouts).orderBy(asc(workouts.position), asc(workouts.createdAt))
+  const [people, plans] = await Promise.all([
+    db.select().from(clients).where(isNull(clients.removedAt)).orderBy(asc(clients.position), asc(clients.createdAt)),
+    db.select().from(workouts).orderBy(asc(workouts.position), asc(workouts.createdAt)),
+  ])
   return people.map((person) => mapClient(person, plans.filter((plan) => plan.clientId === person.id)))
 }
 
 export async function getClientDetail(id: string) {
   const db = await getDb()
-  const [person] = await db.select().from(clients).where(and(eq(clients.id, id), isNull(clients.removedAt)))
+  const [[person], plans] = await Promise.all([
+    db.select().from(clients).where(and(eq(clients.id, id), isNull(clients.removedAt))),
+    db
+      .select()
+      .from(workouts)
+      .where(eq(workouts.clientId, id))
+      .orderBy(asc(workouts.position), asc(workouts.createdAt)),
+  ])
   if (!person) return null
-  const plans = await db
-    .select()
-    .from(workouts)
-    .where(eq(workouts.clientId, id))
-    .orderBy(asc(workouts.position), asc(workouts.createdAt))
   return mapClient(person, plans)
 }
 
@@ -326,8 +326,10 @@ export async function deleteClient(id: string) {
 
 export async function createWorkout(clientId: string, name?: string) {
   const db = await getDb()
-  const existing = await db.select().from(workouts).where(eq(workouts.clientId, clientId))
-  const [maxRow] = await db.select({ value: max(workouts.position) }).from(workouts).where(eq(workouts.clientId, clientId))
+  const [existing, [maxRow]] = await Promise.all([
+    db.select().from(workouts).where(eq(workouts.clientId, clientId)),
+    db.select({ value: max(workouts.position) }).from(workouts).where(eq(workouts.clientId, clientId)),
+  ])
   const workoutName = (name?.trim() || nextWorkoutName(existing.map((plan) => plan.name))).slice(0, 80)
   const id = crypto.randomUUID()
   const blockId = crypto.randomUUID()
@@ -361,14 +363,12 @@ export async function getWorkout(id: string): Promise<WorkoutDTO | null> {
   const db = await getDb()
   const [plan] = await db.select().from(workouts).where(eq(workouts.id, id))
   if (!plan) return null
-  const [person] = await db.select().from(clients).where(eq(clients.id, plan.clientId))
+  const [[person], blockRows, exerciseRows] = await Promise.all([
+    db.select().from(clients).where(eq(clients.id, plan.clientId)),
+    db.select().from(blocks).where(eq(blocks.workoutId, id)).orderBy(asc(blocks.position)),
+    db.select().from(exercises).where(eq(exercises.workoutId, id)).orderBy(asc(exercises.position)),
+  ])
   if (!person) return null
-  const blockRows = await db.select().from(blocks).where(eq(blocks.workoutId, id)).orderBy(asc(blocks.position))
-  const exerciseRows = await db
-    .select()
-    .from(exercises)
-    .where(eq(exercises.workoutId, id))
-    .orderBy(asc(exercises.position))
   return {
     id: plan.id,
     name: plan.name,
@@ -471,11 +471,12 @@ export async function saveWorkoutPlan(workoutId: string, input: PlanSaveInput): 
   }
 
   const db = await getDb()
-  const [plan] = await db.select().from(workouts).where(eq(workouts.id, workoutId))
+  const [[plan], existingBlocks, existingExercises] = await Promise.all([
+    db.select().from(workouts).where(eq(workouts.id, workoutId)),
+    db.select().from(blocks).where(eq(blocks.workoutId, workoutId)),
+    db.select().from(exercises).where(eq(exercises.workoutId, workoutId)),
+  ])
   if (!plan) return { error: 'Nie znaleziono treningu.' }
-
-  const existingBlocks = await db.select().from(blocks).where(eq(blocks.workoutId, workoutId))
-  const existingExercises = await db.select().from(exercises).where(eq(exercises.workoutId, workoutId))
   const blockIds = new Set(existingBlocks.map((block) => block.id))
   const exerciseById = new Map(existingExercises.map((row) => [row.id, row]))
   const seenBlockIds = new Set<string>()
@@ -604,39 +605,68 @@ export async function getClientByToken(token: string, options?: DbOptions) {
 }
 
 export async function getClientHome(token: string): Promise<ClientHomeDTO | null> {
-  const person = await getClientByToken(token)
-  if (!person) return null
+  if (!token || token.length < 20) return null
   const db = await getDb()
-  const plans = await db
-    .select()
-    .from(workouts)
-    .where(eq(workouts.clientId, person.id))
+  const rows = await db
+    .select({
+      client: clients,
+      workoutId: workouts.id,
+      workoutName: workouts.name,
+    })
+    .from(clients)
+    .leftJoin(workouts, eq(workouts.clientId, clients.id))
+    .where(eq(clients.token, token))
     .orderBy(asc(workouts.position), asc(workouts.createdAt))
+  const person = rows[0]?.client
+  if (!person || person.removedAt || !tokenMatches(person.token, token)) return null
   const today = warsawToday()
   const passType = (passTypeById(person.passType)?.id ?? null) as PassTypeId | null
   return {
     name: person.name,
-    workouts: plans.map((plan) => ({ id: plan.id, name: plan.name })),
+    workouts: rows
+      .filter((row) => row.workoutId && row.workoutName)
+      .map((row) => ({ id: row.workoutId!, name: row.workoutName! })),
     passSummary: summarizePass(passType, parseIsoDate(calendarDate(person.trainingStart)), asUsed(person.passUsed), today),
   }
 }
 
 export async function getWorkoutForToken(token: string, workoutId: string) {
-  const person = await getClientByToken(token)
-  if (!person) return null
-  const workout = await getWorkout(workoutId)
-  if (!workout || workout.clientId !== person.id) return null
-  return workout
+  if (!token || token.length < 20) return null
+  const db = await getDb()
+  const [access] = await db
+    .select({ client: clients, plan: workouts })
+    .from(clients)
+    .innerJoin(workouts, and(eq(workouts.id, workoutId), eq(workouts.clientId, clients.id)))
+    .where(eq(clients.token, token))
+  if (!access || access.client.removedAt || !tokenMatches(access.client.token, token)) return null
+  const [blockRows, exerciseRows] = await Promise.all([
+    db.select().from(blocks).where(eq(blocks.workoutId, workoutId)).orderBy(asc(blocks.position)),
+    db.select().from(exercises).where(eq(exercises.workoutId, workoutId)).orderBy(asc(exercises.position)),
+  ])
+  return {
+    id: access.plan.id,
+    name: access.plan.name,
+    clientId: access.client.id,
+    clientName: access.client.name,
+    blocks: blockRows.map((block) => ({
+      id: block.id,
+      name: block.name,
+      position: block.position,
+      exercises: exerciseRows.filter((row) => row.blockId === block.id).map(mapExercise),
+    })),
+  }
 }
 
 export async function setExerciseDoneForToken(token: string, exerciseId: string, done: boolean) {
   const person = await getClientByToken(token)
   if (!person) return null
   const db = await getDb()
-  const [row] = await db.select().from(exercises).where(eq(exercises.id, exerciseId))
-  if (!row) return null
-  const [plan] = await db.select().from(workouts).where(eq(workouts.id, row.workoutId))
-  if (!plan || plan.clientId !== person.id) return null
+  const [row] = await db
+    .select({ exerciseId: exercises.id, clientId: workouts.clientId })
+    .from(exercises)
+    .innerJoin(workouts, eq(workouts.id, exercises.workoutId))
+    .where(eq(exercises.id, exerciseId))
+  if (!row || row.clientId !== person.id) return null
   return updateExercise(exerciseId, { done })
 }
 
@@ -680,11 +710,13 @@ export async function createLibraryExercise(name: string, image?: { bytes: Buffe
   const normalized = normalizeExerciseName(trimmed)
   const db = await getDb()
   const active = and(eq(libraryExercises.normalizedName, normalized), isNull(libraryExercises.deletedAt))
-  const [existing] = await db.select().from(libraryExercises).where(active)
+  const [[existing], [maxRow]] = await Promise.all([
+    db.select().from(libraryExercises).where(active),
+    db.select({ value: max(libraryExercises.position) }).from(libraryExercises),
+  ])
   if (existing) return { exercise: mapLibrary(existing) }
 
   const id = crypto.randomUUID()
-  const [maxRow] = await db.select({ value: max(libraryExercises.position) }).from(libraryExercises)
   const stored = image
     ? await storeLibraryImage(id, image.bytes, image.mime)
     : { imageData: null, imageMime: null, imagePath: null }

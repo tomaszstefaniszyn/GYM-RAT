@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { api } from '@/lib/api-client'
@@ -23,7 +24,8 @@ import {
 } from '@/lib/pass'
 import type { ProfileDTO } from '@/lib/types'
 import { Avatar } from './avatar'
-import { CropDialog } from './crop-dialog'
+
+const CropDialog = dynamic(() => import('./crop-dialog').then((mod) => mod.CropDialog), { ssr: false })
 import { BackIcon, CalendarIcon, CameraIcon, CheckIcon, ClockIcon, PersonGlyph } from './mark'
 
 function isoToPl(value: string | null) {
