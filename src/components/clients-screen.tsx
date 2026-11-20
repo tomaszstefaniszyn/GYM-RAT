@@ -175,7 +175,9 @@ function PassLines({ summary }: { summary: PassSummary }) {
         {remain && days !== null && (
           <>
             {' · '}
-            {remain.lead} <b className={trainerDaysTone(days)}>{days}</b> {remain.word}
+            <span className="nowrap">
+              {remain.lead} <b className={trainerDaysTone(days)}>{days}</b> {remain.word}
+            </span>
           </>
         )}
       </span>

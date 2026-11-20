@@ -819,6 +819,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 .name-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .name-line .client-name { width: auto; }
 .client-meta b { font-weight: 800; }
+.nowrap { white-space: nowrap; }
+.lib-list .swipe-face { width: 100%; }
 .tone-ink { color: var(--ink); }
 .tone-warn { color: #e08a00; }
 .tone-info { color: #2f6fdb; }
