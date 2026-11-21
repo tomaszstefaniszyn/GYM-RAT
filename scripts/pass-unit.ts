@@ -89,8 +89,10 @@ assert(toIso(late) === '2026-11-21', `Warszawa po północy: ${toIso(late)}`)
 const early = warsawToday(new Date('2026-11-20T22:30:00.000Z'))
 assert(toIso(early) === '2026-11-20', `Warszawa przed północą: ${toIso(early)}`)
 
-assert(LIBRARY_EXERCISES.length === 15, '15 ćwiczeń')
-assert(LIBRARY_EXERCISES.filter((name) => name === 'Toe Touch Crunch').length === 1, 'Toe Touch Crunch raz')
+assert(LIBRARY_EXERCISES.length === 78, '78 ćwiczeń w bibliotece')
+assert(LIBRARY_EXERCISES.filter((item) => item.name === 'Toe Touch Crunch').length === 1, 'Toe Touch Crunch raz')
+assert(LIBRARY_EXERCISES.filter((item) => item.name === 'Burpee').length === 1, 'Burpee raz')
+assert(new Set(LIBRARY_EXERCISES.map((item) => item.file)).size === 78, 'każde zdjęcie inne')
 assert(exerciseFileKey('Toe Touch Crunch.PNG') === normalizeExerciseName('  toe   touch   crunch '), 'dopasowanie nazwy pliku')
 assert(
   exerciseFileKey('Face Pull - power band with external rotation.webp') ===
