@@ -2,7 +2,7 @@ import { LIBRARY_EXERCISES, normalizeExerciseName, seedExercisePhotoUrl } from '
 import { schemaSql } from './schema'
 
 /** Bump when schemaSql or the library seed changes. A matching row skips migration. */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export const MIGRATION_LOCK = 847221904
 
@@ -50,7 +50,7 @@ export async function migrateSchema(db: Migrator) {
   }
 
   for (let index = 0; index < LIBRARY_EXERCISES.length; index += 1) {
-    const name = LIBRARY_EXERCISES[index]!
+    const name = LIBRARY_EXERCISES[index]!.name
     const key = normalizeExerciseName(name)
     const url = seedExercisePhotoUrl(name)
     await db.unsafe(
