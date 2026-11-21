@@ -311,6 +311,82 @@ export const LIBRARY_EXERCISES = [
   {
     "name": "Scap Pull Up",
     "file": "scap-pull-up.webp"
+  },
+  {
+    "name": "Romanian Deadlift – Bench Cue",
+    "file": "romanian-deadlift-bench-cue.webp"
+  },
+  {
+    "name": "Hip Thrust Barbell",
+    "file": "hip-thrust-barbell.webp"
+  },
+  {
+    "name": "Cable Triceps Pushdown",
+    "file": "cable-triceps-pushdown.webp"
+  },
+  {
+    "name": "Triceps Overhead Extension",
+    "file": "triceps-overhead-extension.webp"
+  },
+  {
+    "name": "Single-Arm Dumbbell Row",
+    "file": "single-arm-dumbbell-row.webp"
+  },
+  {
+    "name": "Dumbbell Thruster",
+    "file": "dumbbell-thruster.webp"
+  },
+  {
+    "name": "Mountain Climbers",
+    "file": "mountain-climbers.webp"
+  },
+  {
+    "name": "Suitcase Carry",
+    "file": "suitcase-carry.webp"
+  },
+  {
+    "name": "Alternating Dumbbell Snatch",
+    "file": "alternating-dumbbell-snatch.webp"
+  },
+  {
+    "name": "Jumping Lunges",
+    "file": "jumping-lunges.webp"
+  },
+  {
+    "name": "V-Ups",
+    "file": "v-ups.webp"
+  },
+  {
+    "name": "Cross-Body Mountain Climbers",
+    "file": "cross-body-mountain-climbers.webp"
+  },
+  {
+    "name": "Reverse Crunch",
+    "file": "reverse-crunch.webp"
+  },
+  {
+    "name": "Bicycle Crunch",
+    "file": "bicycle-crunch.webp"
+  },
+  {
+    "name": "Plank Shoulder Taps",
+    "file": "plank-shoulder-taps.webp"
+  },
+  {
+    "name": "Dumbbell Lateral Raise",
+    "file": "dumbbell-lateral-raise.webp"
+  },
+  {
+    "name": "Pullover",
+    "file": "pullover.webp"
+  },
+  {
+    "name": "Incline Dumbbell Row",
+    "file": "incline-dumbbell-row.webp"
+  },
+  {
+    "name": "Contralateral Overhead Lunge",
+    "file": "contralateral-overhead-lunge.webp"
   }
 ] as const
 

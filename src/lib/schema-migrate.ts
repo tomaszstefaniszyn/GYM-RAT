@@ -2,7 +2,7 @@ import { LIBRARY_EXERCISES, normalizeExerciseName, seedExercisePhotoUrl } from '
 import { schemaSql } from './schema'
 
 /** Bump when schemaSql or the library seed changes. A matching row skips migration. */
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 export const MIGRATION_LOCK = 847221904
 
