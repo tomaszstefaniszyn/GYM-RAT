@@ -78,8 +78,11 @@ export function InviteDialog({
         <h2 id="invite-title">WYŚLIJ ZAPROSZENIE:</h2>
         {dev ? (
           <div className="dev-link">
-            {dev.error && <p className="error">{dev.error}</p>}
-            <p>Tryb lokalny — e-mail nie został wysłany. Link jest też w logu serwera.</p>
+            {dev.error ? (
+              <p className="error">{dev.error}</p>
+            ) : (
+              <p>Tryb lokalny — e-mail nie został wysłany. Link jest też w logu serwera.</p>
+            )}
             <p>{dev.text}</p>
             <button
               type="button"
