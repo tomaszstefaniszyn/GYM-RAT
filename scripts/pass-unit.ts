@@ -9,6 +9,14 @@ import {
   warsawToday,
 } from '../src/lib/pass'
 import { LIBRARY_EXERCISES, exerciseFileKey, normalizeExerciseName } from '../src/lib/library-names'
+import {
+  gmailFailureLog,
+  gmailFailureMessage,
+  isGmailAuthFailure,
+  isGmailConnectFailure,
+  normalizeAppPassword,
+  normalizeMailbox,
+} from '../src/lib/mail-failure'
 
 function fail(message: string): never {
   console.error('FAIL:', message)
@@ -109,5 +117,20 @@ assert(
     normalizeExerciseName('Face Pull - power band with external rotation'),
   'face pull',
 )
+
+const secret = 'abcd efgh ijkl mnop'
+assert(normalizeAppPassword(`  "${secret}"\n`) === 'abcdefghijklmnop', 'hasło aplikacji bez spacji i cudzysłowu')
+assert(normalizeAppPassword("  'abcd efgh'\n") === 'abcdefgh', 'hasło w apostrofach')
+assert(normalizeMailbox('  "tomaszstefaniszyn9@gmail.com"  ') === 'tomaszstefaniszyn9@gmail.com', 'adres bez cudzysłowu')
+const auth = { code: 'EAUTH', responseCode: 535, command: 'AUTH', response: '535-5.7.8 Username and Password not accepted' }
+assert(isGmailAuthFailure(auth) && !isGmailConnectFailure(auth), '535 to odrzucenie hasła')
+assert(gmailFailureMessage(auth) === 'Gmail odrzucił hasło aplikacji (535).', 'komunikat 535')
+const timeout = { code: 'ETIMEDOUT', message: 'Connection timeout' }
+assert(isGmailConnectFailure(timeout) && !isGmailAuthFailure(timeout), 'timeout to brak połączenia')
+assert(gmailFailureMessage(timeout) === 'Brak połączenia z serwerem Gmail.', 'komunikat timeout')
+assert(gmailFailureMessage({ responseCode: 534, code: 'EAUTH', response: '534-5.7.9 Application-specific password required' }) === 'Gmail odrzucił logowanie (534).', 'komunikat 534')
+const leaked = gmailFailureLog({ code: 'EAUTH', responseCode: 535, response: `535 rejected ${'abcdefghijklmnop'}` }, 'abcdefghijklmnop')
+assert(!leaked.includes('abcdefghijklmnop') && leaked.includes('[redacted]'), 'log nie zawiera hasła')
+assert(leaked.includes('"responseCode":535') && leaked.includes('EAUTH'), 'log ma kod SMTP')
 
 console.log('UNIT OK')

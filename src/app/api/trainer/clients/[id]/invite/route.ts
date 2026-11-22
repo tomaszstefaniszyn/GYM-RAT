@@ -7,6 +7,7 @@ import { inviteText } from '@/lib/invite'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 30
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await trainerGuard()
