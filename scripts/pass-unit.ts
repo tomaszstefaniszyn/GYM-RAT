@@ -9,6 +9,7 @@ import {
   warsawToday,
 } from '../src/lib/pass'
 import { LIBRARY_EXERCISES, exerciseFileKey, normalizeExerciseName } from '../src/lib/library-names'
+import { edgeScrollDelta, exerciseBadge, holdCancelled, insertionIndex, moveItem } from '../src/lib/reorder'
 import {
   gmailFailureLog,
   gmailFailureMessage,
@@ -132,5 +133,22 @@ assert(gmailFailureMessage({ responseCode: 534, code: 'EAUTH', response: '534-5.
 const leaked = gmailFailureLog({ code: 'EAUTH', responseCode: 535, response: `535 rejected ${'abcdefghijklmnop'}` }, 'abcdefghijklmnop')
 assert(!leaked.includes('abcdefghijklmnop') && leaked.includes('[redacted]'), 'log nie zawiera hasła')
 assert(leaked.includes('"responseCode":535') && leaked.includes('EAUTH'), 'log ma kod SMTP')
+
+assert(exerciseBadge(0) === '01' && exerciseBadge(9) === '10', 'numer ćwiczenia')
+const order = moveItem(['A', 'B', 'C'], 0, 2)
+assert(JSON.stringify(order) === JSON.stringify(['B', 'C', 'A']), 'przesunięcie na koniec')
+assert(JSON.stringify(moveItem(['A', 'B', 'C'], 2, 0)) === JSON.stringify(['C', 'A', 'B']), 'przesunięcie na początek')
+assert(JSON.stringify(moveItem(['A', 'B'], 0, 0)) === JSON.stringify(['A', 'B']), 'ten sam indeks')
+assert(!holdCancelled(5, 5) && holdCancelled(9, 0) && !holdCancelled(8, 0), 'próg 8 px anuluje przytrzymanie')
+const mids = [
+  { key: 'a', mid: 100 },
+  { key: 'b', mid: 200 },
+  { key: 'c', mid: 300 },
+]
+assert(insertionIndex(mids, 'a', 250) === 1, 'za drugim kafelkiem')
+assert(insertionIndex(mids, 'a', 350) === 2, 'na koniec listy')
+assert(insertionIndex(mids, 'c', 50) === 0, 'na początek listy')
+assert(insertionIndex(mids, 'c', 150) === 1, 'między pierwsze i drugie')
+assert(edgeScrollDelta(10, 800) < 0 && edgeScrollDelta(400, 800) === 0 && edgeScrollDelta(790, 800, 72, 16, 96) > 0, 'autoscroll przy krawędzi')
 
 console.log('UNIT OK')

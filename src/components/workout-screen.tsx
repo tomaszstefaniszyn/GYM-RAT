@@ -5,9 +5,11 @@ import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api-client'
+import { exerciseBadge, moveItem } from '@/lib/reorder'
 import type { WorkoutDTO } from '@/lib/types'
 import { usePoll } from '@/lib/use-poll'
 import type { LibraryPick } from './exercise-library'
+import { useBlockReorder } from './use-block-reorder'
 
 const CropDialog = dynamic(() => import('./crop-dialog').then((mod) => mod.CropDialog), { ssr: false })
 const ExerciseLibrary = dynamic(() => import('./exercise-library').then((mod) => mod.ExerciseLibrary), {
@@ -165,6 +167,7 @@ export function WorkoutScreen({
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [libraryKey, setLibraryKey] = useState<string | null>(null)
   const dirty = useRef(false)
+  const reordering = useRef(false)
   const pending = useRef(new Set<string>())
   const fileRef = useRef<HTMLInputElement>(null)
   const pickKey = useRef<string | null>(null)
@@ -187,9 +190,27 @@ export function WorkoutScreen({
     return () => window.removeEventListener('keydown', onKey)
   }, [lightbox])
 
+  const { dragKey, sorting, bind: bindReorder } = useBlockReorder({
+    enabled: trainer,
+    onActiveChange: (active) => {
+      reordering.current = active
+    },
+    onReorder: (blockKey, exerciseKey, toIndex) => {
+      touch()
+      setBlocks((prev) =>
+        prev.map((block) => {
+          if (block.key !== blockKey) return block
+          const from = block.exercises.findIndex((exercise) => exercise.key === exerciseKey)
+          if (from < 0 || from === toIndex) return block
+          return { ...block, exercises: moveItem(block.exercises, from, toIndex) }
+        }),
+      )
+    },
+  })
+
   usePoll(async () => {
     const data = await api<WorkoutDTO>(reloadUrl)
-    if (dirty.current) {
+    if (dirty.current || reordering.current) {
       setBlocks((prev) => mergeDone(prev, data, pending.current))
       return
     }
@@ -433,6 +454,7 @@ export function WorkoutScreen({
               </div>
               {block.open && (
                 <>
+                  <div className={sorting ? 'ex-list is-sorting' : 'ex-list'}>
                   {block.exercises.map((exercise, index) => {
                     const removed = exercise.imageFile === null
                     const src =
@@ -447,10 +469,26 @@ export function WorkoutScreen({
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src="/exercises/placeholder.svg" alt="" loading="lazy" decoding="async" />
                     )
+                    const reorder = trainer ? bindReorder(block.key, exercise.key) : null
                     return (
-                      <article key={exercise.key} className={exercise.done ? 'ex-card is-done' : 'ex-card'}>
+                      <article
+                        key={exercise.key}
+                        data-ex-key={exercise.key}
+                        className={
+                          exercise.done
+                            ? dragKey === exercise.key
+                              ? 'ex-card is-done is-lifted'
+                              : 'ex-card is-done'
+                            : dragKey === exercise.key
+                              ? 'ex-card is-lifted'
+                              : 'ex-card'
+                        }
+                        onPointerDown={reorder?.onPointerDown}
+                        onContextMenu={reorder?.onContextMenu}
+                        onClickCapture={reorder?.onClickCapture}
+                      >
                         <div className="ex-top">
-                          <span className="ex-badge">{String(index + 1).padStart(2, '0')}</span>
+                          <span className="ex-badge">{exerciseBadge(index)}</span>
                           {trainer ? (
                             <div className="ex-name-row">
                               <NameField
@@ -602,6 +640,7 @@ export function WorkoutScreen({
                       </article>
                     )
                   })}
+                  </div>
                   {trainer && (
                     <button
                       type="button"
