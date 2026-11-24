@@ -416,6 +416,58 @@ const repsValues = textReps.data.blocks[0].exercises.map((item) => item.reps)
 assert(JSON.stringify(repsValues) === JSON.stringify(['30–45 s', '10/strona', 'AMRAP']), `reps ${repsValues}`)
 assert(textReps.data.blocks[0].exercises[1].done === true, 'zapis reps nie rusza wykonane sąsiada')
 assert(textReps.data.blocks[0].exercises[0].serie === '3', 'serie zostają')
+const trio = textReps.data.blocks[0].exercises
+const reordered = await req(`/api/trainer/workouts/${plan.data.id}`, {
+  method: 'PUT',
+  body: JSON.stringify({
+    name: 'Trening A',
+    blocks: [
+      {
+        id: textReps.data.blocks[0].id,
+        name: 'Rozgrzewka',
+        exercises: [trio[2], trio[0], trio[1]].map((exercise) => ({
+          id: exercise.id,
+          cwiczenie: exercise.cwiczenie,
+          serie: exercise.serie,
+          reps: exercise.reps,
+          opis: exercise.opis,
+          done: exercise.done,
+        })),
+      },
+    ],
+  }),
+})
+assert(reordered.status === 200, `zapis nowej kolejności ${reordered.status}`)
+const reorderedNames = reordered.data.blocks[0].exercises.map((item) => item.cwiczenie)
+assert(JSON.stringify(reorderedNames) === JSON.stringify(['Finisz', 'Deska boczna', 'Skok']), `kolejność trenera ${reorderedNames}`)
+const clientOrder = await req(`/api/client/${token}/workouts/${plan.data.id}`)
+const clientNames = clientOrder.data.blocks[0].exercises.map((item) => item.cwiczenie)
+assert(JSON.stringify(clientNames) === JSON.stringify(reorderedNames), `kolejność klienta ${clientNames}`)
+const restoredOrder = await req(`/api/trainer/workouts/${plan.data.id}`, {
+  method: 'PUT',
+  body: JSON.stringify({
+    name: 'Trening A',
+    blocks: [
+      {
+        id: textReps.data.blocks[0].id,
+        name: 'Rozgrzewka',
+        exercises: trio.map((exercise) => ({
+          id: exercise.id,
+          cwiczenie: exercise.cwiczenie,
+          serie: exercise.serie,
+          reps: exercise.reps,
+          opis: exercise.opis,
+          done: exercise.done,
+        })),
+      },
+    ],
+  }),
+})
+assert(
+  JSON.stringify(restoredOrder.data.blocks[0].exercises.map((item) => item.cwiczenie)) ===
+    JSON.stringify(['Deska boczna', 'Skok', 'Finisz']),
+  'przywrócona kolejność',
+)
 const dropped = await req(`/api/trainer/library/${manual.data.exercise.id}`, { method: 'DELETE' })
 assert(dropped.status === 200, 'usunięcie z biblioteki')
 const libraryAfter = await req('/api/trainer/library')

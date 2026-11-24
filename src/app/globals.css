@@ -469,6 +469,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 .menu button { width: 100%; text-align: left; padding: 10px 10px; border-radius: 8px; font-weight: 700; }
 .menu button.danger { color: var(--danger); }
 .dots-inert { color: #161616; pointer-events: none; }
+.ex-list { display: contents; }
 .ex-card {
   background: #f7f4ef;
   border: 1px solid #e7e2da;
@@ -477,6 +478,22 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
   margin-top: 10px;
 }
 .ex-card.is-done { background: #eef8f1; }
+.ex-card.is-holding,
+.ex-card.is-lifted,
+body.is-reordering {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.ex-card.is-lifted {
+  position: relative;
+  z-index: 4;
+  box-shadow: 0 12px 28px rgba(40, 32, 16, 0.18);
+  touch-action: none;
+}
+.ex-list.is-sorting .ex-card:not(.is-lifted) {
+  transition: transform 180ms ease;
+}
 .ex-top { display: flex; align-items: flex-start; gap: 10px; }
 .ex-badge {
   flex: none;
