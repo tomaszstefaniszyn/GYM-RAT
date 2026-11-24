@@ -846,16 +846,89 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 .karnet-card {
   background: #fff;
   border-radius: 22px;
-  padding: 16px 16px 12px;
+  padding: 12px 10px;
   box-shadow: 0 10px 28px rgba(40, 32, 16, 0.05);
+  container-type: inline-size;
 }
-.karnet-metrics { display: grid; grid-template-columns: 1fr 1px 1fr; gap: 12px; align-items: center; }
-.karnet-figure { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
-.karnet-caption { color: var(--muted); font-size: 13px; margin-top: 4px; font-weight: 650; }
-.karnet-divider { width: 1px; height: 42px; background: var(--line); justify-self: center; }
-.karnet-rule { height: 1px; background: var(--line); margin: 14px 0 10px; }
-.karnet-until { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; font-weight: 650; }
-.karnet-until b { margin-left: auto; color: var(--ink); font-weight: 800; }
+.karnet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+.karnet-row .dumbbell {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  flex: none;
+}
+.karnet-row .dumbbell svg { width: 22px; height: 22px; }
+.karnet-cell {
+  min-width: max-content;
+  flex: 0 0 auto;
+  padding: 0;
+}
+.karnet-status-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.karnet-figure {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.karnet-caption {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 4px;
+  font-weight: 650;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.karnet-divider {
+  width: 1px;
+  height: 36px;
+  background: var(--line);
+  flex: none;
+}
+.karnet-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 4px 8px 4px 7px;
+  font-size: 12.5px;
+  font-weight: 750;
+  line-height: 1;
+  white-space: nowrap;
+}
+.karnet-badge.is-on { background: #e7f6ec; color: var(--green); }
+.karnet-badge.is-off { background: #fdecec; color: #e23b3b; }
+.karnet-badge.is-none { background: transparent; color: var(--muted); padding-left: 0; }
+.karnet-badge .status-dot { width: 7px; height: 7px; }
+.karnet-until {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+@container (max-width: 340px) {
+  .karnet-card { padding: 10px 8px; }
+  .karnet-row { gap: 4px; }
+  .karnet-row .dumbbell { width: 36px; height: 36px; border-radius: 11px; }
+  .karnet-row .dumbbell svg { width: 18px; height: 18px; }
+  .karnet-figure { font-size: 18px; }
+  .karnet-caption, .karnet-until { font-size: 10px; }
+  .karnet-badge { font-size: 11px; gap: 4px; padding: 3px 6px 3px 5px; }
+  .karnet-divider { height: 32px; }
+}
 .readonly-value { font-weight: 800; font-size: 16px; }
 .mark-highlight {
   display: inline;
@@ -958,5 +1031,4 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
   .stat-done { width: 72px; }
   .stat-serie .sq, .stat-serie .sq-text, .stat-done .sq { width: 34px; height: 34px; }
   .stat-reps .sq, .stat-reps .sq-text { height: 34px; }
-  .karnet-figure { font-size: 24px; }
 }

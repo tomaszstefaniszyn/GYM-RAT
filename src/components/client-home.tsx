@@ -6,7 +6,7 @@ import { ApiError, api } from '@/lib/api-client'
 import { clientDaysTone, clientUsedTone, daysWord } from '@/lib/pass'
 import type { ClientHomeDTO, PassSummary } from '@/lib/types'
 import { usePoll } from '@/lib/use-poll'
-import { ArrowIcon, CalendarIcon, DumbbellIcon, Logo, PersonIcon } from './mark'
+import { ArrowIcon, DumbbellIcon, Logo, PersonIcon } from './mark'
 
 const STORAGE_KEY = 'gr_client_token'
 
@@ -108,37 +108,37 @@ export function ClientHome({ token, initial }: { token: string; initial: ClientH
 
 function PassCard({ summary }: { summary: PassSummary }) {
   const days = summary.remainingDays
+  const hasPass = summary.limit > 0
   const active = summary.status === 'active'
+  const count = hasPass ? `${summary.used}/${summary.limit}` : '—'
+  const daysText = days === null ? '—' : `${days} ${daysWord(days)}`
+  const badge = !hasPass ? 'is-none' : active ? 'is-on' : 'is-off'
+  const label = !hasPass ? 'Brak karnetu' : active ? 'Aktywny' : 'Nieaktywny'
   return (
     <section>
-      <div className="pass-section-head">
-        <h2 className="section-title">Twój karnet</h2>
-        <span className={active ? 'status-pill is-on' : 'status-pill is-off'}>
-          <span className="status-dot" aria-hidden="true" />
-          {active ? 'Aktywny' : 'Nieaktywny'}
-        </span>
-      </div>
+      <h2 className="section-title">Twój karnet</h2>
       <article className="karnet-card">
-        <div className="karnet-metrics">
-          <div>
-            <div className={`karnet-figure ${summary.limit ? clientUsedTone(summary.used, summary.limit) : 'tone-ink'}`}>
-              {summary.limit ? `${summary.used}/${summary.limit}` : '—'}
-            </div>
-            <div className="karnet-caption">Wykorzystane treningi</div>
+        <div className="karnet-row">
+          <span className="dumbbell" aria-hidden="true">
+            <DumbbellIcon />
+          </span>
+          <div className="karnet-cell">
+            <div className={`karnet-figure ${hasPass ? clientUsedTone(summary.used, summary.limit) : 'tone-ink'}`}>{count}</div>
+            <div className="karnet-caption">Treningi</div>
           </div>
           <div className="karnet-divider" aria-hidden="true" />
-          <div>
-            <div className={`karnet-figure ${days === null ? 'tone-ink' : clientDaysTone(days)}`}>
-              {days === null ? '—' : `${days} ${daysWord(days)}`}
-            </div>
+          <div className="karnet-cell">
+            <div className={`karnet-figure ${days === null ? 'tone-ink' : clientDaysTone(days)}`}>{daysText}</div>
             <div className="karnet-caption">Pozostało</div>
           </div>
-        </div>
-        <div className="karnet-rule" />
-        <div className="karnet-until">
-          <CalendarIcon />
-          <span>Ważny do</span>
-          <b>{summary.validUntil ?? '—'}</b>
+          <div className="karnet-divider" aria-hidden="true" />
+          <div className="karnet-cell karnet-status-cell">
+            <span className={`karnet-badge ${badge}`}>
+              {hasPass && <span className="status-dot" aria-hidden="true" />}
+              {label}
+            </span>
+            <div className="karnet-until">{summary.validUntil ? `Ważny do ${summary.validUntil}` : '\u00a0'}</div>
+          </div>
         </div>
       </article>
     </section>
