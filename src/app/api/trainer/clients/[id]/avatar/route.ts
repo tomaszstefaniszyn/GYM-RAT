@@ -1,5 +1,4 @@
-import { readStoredAvatar } from '@/lib/avatar-storage'
-import { clearClientAvatar, getClientRow, saveClientAvatarBytes } from '@/lib/data'
+import { clearClientAvatar, getClientRow, readClientAvatarFile, saveClientAvatarBytes } from '@/lib/data'
 import { trainerGuard } from '@/lib/guard'
 import { json, rejectCrossSite } from '@/lib/http'
 import { fileResponse, readFormImage } from '@/lib/image-payload'
@@ -15,7 +14,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   const { id } = await ctx.params
   const client = await getClientRow(id, { migrate: false })
   if (!client) return json({ error: 'Nie znaleziono klienta.' }, 404)
-  const file = await readStoredAvatar(client)
+  const file = await readClientAvatarFile({ id })
   if (!file) return json({ error: 'Brak zdjęcia.' }, 404)
   return fileResponse(file, _req)
 }

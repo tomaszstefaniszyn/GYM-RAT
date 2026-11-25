@@ -8,7 +8,16 @@ import { blocks, exercises } from './schema'
  * block_id are left untouched, including their done state and text.
  */
 export async function migrateLegacyBlocks(db: Database) {
-  const orphans = await db.select().from(exercises).where(isNull(exercises.blockId)).orderBy(asc(exercises.position))
+  const orphans = await db
+    .select({
+      id: exercises.id,
+      workoutId: exercises.workoutId,
+      position: exercises.position,
+      blok: exercises.blok,
+    })
+    .from(exercises)
+    .where(isNull(exercises.blockId))
+    .orderBy(asc(exercises.position))
   if (orphans.length === 0) return
 
   const byWorkout = new Map<string, typeof orphans>()
