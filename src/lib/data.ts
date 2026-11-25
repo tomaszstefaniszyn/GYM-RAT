@@ -1,9 +1,10 @@
 import 'server-only'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import { and, asc, eq, inArray, isNull, max } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, max, sql } from 'drizzle-orm'
 import {
   deleteStoredAvatar,
   deleteStoredImage,
+  readStoredAvatar,
   readStoredExercise,
   storeAvatar,
   storeExerciseImage,
@@ -26,6 +27,102 @@ import {
 } from './pass'
 import { blocks, clients, exercises, libraryExercises, workouts } from './schema'
 import type { ClientHomeDTO, ClientListItem, ExerciseDTO, LibraryExerciseDTO, ProfileDTO, WorkoutDTO } from './types'
+
+/** Lists and polls must not pull base64 image bytes. Presence is a boolean; the file is read only when an image URL is opened. */
+const clientColumns = {
+  id: clients.id,
+  name: clients.name,
+  email: clients.email,
+  token: clients.token,
+  birthDate: clients.birthDate,
+  weightKg: clients.weightKg,
+  heightCm: clients.heightCm,
+  level: clients.level,
+  passType: clients.passType,
+  trainingStart: clients.trainingStart,
+  passUsed: clients.passUsed,
+  goal: clients.goal,
+  injuries: clients.injuries,
+  position: clients.position,
+  removedAt: clients.removedAt,
+  createdAt: clients.createdAt,
+  updatedAt: clients.updatedAt,
+  avatarPath: clients.avatarPath,
+  hasAvatar: sql<boolean>`(${clients.avatarData} is not null or ${clients.avatarPath} is not null)`.mapWith(Boolean),
+}
+
+const exerciseColumns = {
+  id: exercises.id,
+  workoutId: exercises.workoutId,
+  blockId: exercises.blockId,
+  blok: exercises.blok,
+  cwiczenie: exercises.cwiczenie,
+  serie: exercises.serie,
+  reps: exercises.reps,
+  opis: exercises.opis,
+  done: exercises.done,
+  position: exercises.position,
+  updatedAt: exercises.updatedAt,
+  imagePath: exercises.imagePath,
+  hasImage: sql<boolean>`(${exercises.imageData} is not null or ${exercises.imagePath} is not null)`.mapWith(Boolean),
+}
+
+const libraryColumns = {
+  id: libraryExercises.id,
+  name: libraryExercises.name,
+  normalizedName: libraryExercises.normalizedName,
+  imagePath: libraryExercises.imagePath,
+  position: libraryExercises.position,
+  deletedAt: libraryExercises.deletedAt,
+  createdAt: libraryExercises.createdAt,
+  hasInlineImage: sql<boolean>`${libraryExercises.imageData} is not null`.mapWith(Boolean),
+}
+
+type ClientView = {
+  id: string
+  name: string
+  email: string
+  token: string
+  birthDate: string | null
+  weightKg: number | null
+  heightCm: number | null
+  level: string | null
+  passType: string | null
+  trainingStart: string | null
+  passUsed: boolean[]
+  goal: string
+  injuries: string
+  position: number
+  removedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+  avatarPath: string | null
+  hasAvatar: boolean
+}
+
+type ExerciseView = {
+  id: string
+  blockId: string | null
+  cwiczenie: string
+  serie: string
+  reps: string
+  opis: string | null
+  done: boolean
+  position: number
+  updatedAt: Date
+  hasImage: boolean
+  imagePath: string | null
+}
+
+type LibraryView = {
+  id: string
+  name: string
+  normalizedName: string
+  imagePath: string | null
+  position: number
+  createdAt: Date
+  hasInlineImage: boolean
+}
 
 function iso(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value)
@@ -70,7 +167,7 @@ function asUsed(value: unknown) {
   return value
 }
 
-function mapExercise(row: typeof exercises.$inferSelect): ExerciseDTO {
+function mapExercise(row: ExerciseView): ExerciseDTO {
   return {
     id: row.id,
     cwiczenie: row.cwiczenie,
@@ -79,12 +176,12 @@ function mapExercise(row: typeof exercises.$inferSelect): ExerciseDTO {
     opis: row.opis ?? '',
     done: Boolean(row.done),
     position: row.position,
-    hasImage: Boolean(row.imageData || row.imagePath),
+    hasImage: Boolean(row.hasImage),
     updatedAt: iso(row.updatedAt),
   }
 }
 
-function mapProfile(row: typeof clients.$inferSelect): ProfileDTO {
+function mapProfile(row: ClientView): ProfileDTO {
   const today = warsawToday()
   const birth = parseIsoDate(calendarDate(row.birthDate))
   const start = parseIsoDate(calendarDate(row.trainingStart))
@@ -94,7 +191,7 @@ function mapProfile(row: typeof clients.$inferSelect): ProfileDTO {
     id: row.id,
     name: row.name,
     email: row.email,
-    hasAvatar: Boolean(row.avatarData || row.avatarPath),
+    hasAvatar: Boolean(row.hasAvatar),
     updatedAt: iso(row.updatedAt),
     birthDate: birth ? toIso(birth) : null,
     age: age !== null && age >= 0 ? age : null,
@@ -116,14 +213,14 @@ function shownPlanDate(workout: typeof workouts.$inferSelect) {
   return toIso(warsawToday(workout.createdAt))
 }
 
-function mapClient(row: typeof clients.$inferSelect, clientWorkouts: (typeof workouts.$inferSelect)[]): ClientListItem {
+function mapClient(row: ClientView, clientWorkouts: (typeof workouts.$inferSelect)[]): ClientListItem {
   return {
     id: row.id,
     name: row.name,
     email: row.email,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
-    hasAvatar: Boolean(row.avatarData || row.avatarPath),
+    hasAvatar: Boolean(row.hasAvatar),
     passSummary: summarizePass(
       (passTypeById(row.passType)?.id ?? null) as PassTypeId | null,
       parseIsoDate(calendarDate(row.trainingStart)),
@@ -153,7 +250,7 @@ function nextWorkoutName(names: string[]) {
 export async function listClients(): Promise<ClientListItem[]> {
   const db = await getDb()
   const [people, plans] = await Promise.all([
-    db.select().from(clients).where(isNull(clients.removedAt)).orderBy(asc(clients.position), asc(clients.createdAt)),
+    db.select(clientColumns).from(clients).where(isNull(clients.removedAt)).orderBy(asc(clients.position), asc(clients.createdAt)),
     db.select().from(workouts).orderBy(asc(workouts.position), asc(workouts.createdAt)),
   ])
   return people.map((person) => mapClient(person, plans.filter((plan) => plan.clientId === person.id)))
@@ -162,7 +259,7 @@ export async function listClients(): Promise<ClientListItem[]> {
 export async function getClientDetail(id: string) {
   const db = await getDb()
   const [[person], plans] = await Promise.all([
-    db.select().from(clients).where(and(eq(clients.id, id), isNull(clients.removedAt))),
+    db.select(clientColumns).from(clients).where(and(eq(clients.id, id), isNull(clients.removedAt))),
     db
       .select()
       .from(workouts)
@@ -175,7 +272,7 @@ export async function getClientDetail(id: string) {
 
 export async function getClientRow(id: string, options?: DbOptions) {
   const db = await getDb(options)
-  const [person] = await db.select().from(clients).where(eq(clients.id, id))
+  const [person] = await db.select(clientColumns).from(clients).where(eq(clients.id, id))
   return person ?? null
 }
 
@@ -207,7 +304,7 @@ export async function updateProfile(id: string, input: ProfileInput) {
       updatedAt: new Date(),
     })
     .where(eq(clients.id, id))
-    .returning()
+    .returning(clientColumns)
   return row ? mapProfile(row) : null
 }
 
@@ -215,7 +312,7 @@ export async function createClient(input: { name: string; email: string }) {
   const db = await getDb()
   const email = input.email.trim().toLowerCase()
   const name = input.name.trim()
-  const [existing] = await db.select().from(clients).where(eq(clients.email, email))
+  const [existing] = await db.select(clientColumns).from(clients).where(eq(clients.email, email))
   if (existing && !existing.removedAt) return { error: 'Ten e-mail jest już na liście.' as const }
   if (existing?.removedAt) {
     const [row] = await db
@@ -258,7 +355,7 @@ export async function updateClientAvatar(
     .update(clients)
     .set({ ...avatar, updatedAt: new Date() })
     .where(eq(clients.id, id))
-    .returning()
+    .returning(clientColumns)
   return row ?? null
 }
 
@@ -364,9 +461,9 @@ export async function getWorkout(id: string): Promise<WorkoutDTO | null> {
   const [plan] = await db.select().from(workouts).where(eq(workouts.id, id))
   if (!plan) return null
   const [[person], blockRows, exerciseRows] = await Promise.all([
-    db.select().from(clients).where(eq(clients.id, plan.clientId)),
+    db.select(clientColumns).from(clients).where(eq(clients.id, plan.clientId)),
     db.select().from(blocks).where(eq(blocks.workoutId, id)).orderBy(asc(blocks.position)),
-    db.select().from(exercises).where(eq(exercises.workoutId, id)).orderBy(asc(exercises.position)),
+    db.select(exerciseColumns).from(exercises).where(eq(exercises.workoutId, id)).orderBy(asc(exercises.position)),
   ])
   if (!person) return null
   return {
@@ -407,7 +504,7 @@ export async function createExercise(workoutId: string, blockId?: string) {
       blockId: target,
       position: (maxRow?.value ?? -1) + 1,
     })
-    .returning()
+    .returning(exerciseColumns)
   return mapExercise(row!)
 }
 
@@ -425,13 +522,16 @@ export async function updateExercise(id: string, patch: ExercisePatch) {
     .update(exercises)
     .set({ ...patch, updatedAt: new Date() })
     .where(eq(exercises.id, id))
-    .returning()
+    .returning(exerciseColumns)
   return row ? mapExercise(row) : null
 }
 
 export async function deleteExercise(id: string) {
   const db = await getDb()
-  const [row] = await db.delete(exercises).where(eq(exercises.id, id)).returning()
+  const [row] = await db.delete(exercises).where(eq(exercises.id, id)).returning({
+    id: exercises.id,
+    imagePath: exercises.imagePath,
+  })
   if (!row) return null
   await deleteStoredImage(row.imagePath)
   return row
@@ -439,7 +539,7 @@ export async function deleteExercise(id: string) {
 
 export async function getExerciseRow(id: string, options?: DbOptions) {
   const db = await getDb(options)
-  const [row] = await db.select().from(exercises).where(eq(exercises.id, id))
+  const [row] = await db.select(exerciseColumns).from(exercises).where(eq(exercises.id, id))
   return row ?? null
 }
 
@@ -474,7 +574,7 @@ export async function saveWorkoutPlan(workoutId: string, input: PlanSaveInput): 
   const [[plan], existingBlocks, existingExercises] = await Promise.all([
     db.select().from(workouts).where(eq(workouts.id, workoutId)),
     db.select().from(blocks).where(eq(blocks.workoutId, workoutId)),
-    db.select().from(exercises).where(eq(exercises.workoutId, workoutId)),
+    db.select(exerciseColumns).from(exercises).where(eq(exercises.workoutId, workoutId)),
   ])
   if (!plan) return { error: 'Nie znaleziono treningu.' }
   const blockIds = new Set(existingBlocks.map((block) => block.id))
@@ -599,7 +699,7 @@ export async function saveWorkoutPlan(workoutId: string, input: PlanSaveInput): 
 export async function getClientByToken(token: string, options?: DbOptions) {
   if (!token || token.length < 20) return null
   const db = await getDb(options)
-  const [person] = await db.select().from(clients).where(eq(clients.token, token))
+  const [person] = await db.select(clientColumns).from(clients).where(eq(clients.token, token))
   if (!person || person.removedAt || !tokenMatches(person.token, token)) return null
   return person
 }
@@ -607,25 +707,18 @@ export async function getClientByToken(token: string, options?: DbOptions) {
 export async function getClientHome(token: string): Promise<ClientHomeDTO | null> {
   if (!token || token.length < 20) return null
   const db = await getDb()
-  const rows = await db
-    .select({
-      client: clients,
-      workoutId: workouts.id,
-      workoutName: workouts.name,
-    })
-    .from(clients)
-    .leftJoin(workouts, eq(workouts.clientId, clients.id))
-    .where(eq(clients.token, token))
-    .orderBy(asc(workouts.position), asc(workouts.createdAt))
-  const person = rows[0]?.client
+  const [person] = await db.select(clientColumns).from(clients).where(eq(clients.token, token))
   if (!person || person.removedAt || !tokenMatches(person.token, token)) return null
+  const plans = await db
+    .select({ id: workouts.id, name: workouts.name })
+    .from(workouts)
+    .where(eq(workouts.clientId, person.id))
+    .orderBy(asc(workouts.position), asc(workouts.createdAt))
   const today = warsawToday()
   const passType = (passTypeById(person.passType)?.id ?? null) as PassTypeId | null
   return {
     name: person.name,
-    workouts: rows
-      .filter((row) => row.workoutId && row.workoutName)
-      .map((row) => ({ id: row.workoutId!, name: row.workoutName! })),
+    workouts: plans.map((plan) => ({ id: plan.id, name: plan.name })),
     passSummary: summarizePass(passType, parseIsoDate(calendarDate(person.trainingStart)), asUsed(person.passUsed), today),
   }
 }
@@ -634,20 +727,27 @@ export async function getWorkoutForToken(token: string, workoutId: string) {
   if (!token || token.length < 20) return null
   const db = await getDb()
   const [access] = await db
-    .select({ client: clients, plan: workouts })
+    .select({
+      clientId: clients.id,
+      clientName: clients.name,
+      token: clients.token,
+      removedAt: clients.removedAt,
+      planId: workouts.id,
+      planName: workouts.name,
+    })
     .from(clients)
     .innerJoin(workouts, and(eq(workouts.id, workoutId), eq(workouts.clientId, clients.id)))
     .where(eq(clients.token, token))
-  if (!access || access.client.removedAt || !tokenMatches(access.client.token, token)) return null
+  if (!access || access.removedAt || !tokenMatches(access.token, token)) return null
   const [blockRows, exerciseRows] = await Promise.all([
     db.select().from(blocks).where(eq(blocks.workoutId, workoutId)).orderBy(asc(blocks.position)),
-    db.select().from(exercises).where(eq(exercises.workoutId, workoutId)).orderBy(asc(exercises.position)),
+    db.select(exerciseColumns).from(exercises).where(eq(exercises.workoutId, workoutId)).orderBy(asc(exercises.position)),
   ])
   return {
-    id: access.plan.id,
-    name: access.plan.name,
-    clientId: access.client.id,
-    clientName: access.client.name,
+    id: access.planId,
+    name: access.planName,
+    clientId: access.clientId,
+    clientName: access.clientName,
     blocks: blockRows.map((block) => ({
       id: block.id,
       name: block.name,
@@ -670,10 +770,10 @@ export async function setExerciseDoneForToken(token: string, exerciseId: string,
   return updateExercise(exerciseId, { done })
 }
 
-function libraryImageUrl(row: typeof libraryExercises.$inferSelect) {
+function libraryImageUrl(row: LibraryView) {
   if (row.imagePath?.startsWith('/')) return row.imagePath
   const seed = seedExercisePhotoUrl(row.normalizedName)
-  const custom = Boolean(row.imageData || (row.imagePath && !row.imagePath.startsWith('/')))
+  const custom = Boolean(row.hasInlineImage || (row.imagePath && !row.imagePath.startsWith('/')))
   if (!custom && seed) return seed
   if (custom) {
     const version = row.createdAt instanceof Date ? row.createdAt.getTime() : '1'
@@ -682,7 +782,7 @@ function libraryImageUrl(row: typeof libraryExercises.$inferSelect) {
   return seed
 }
 
-function mapLibrary(row: typeof libraryExercises.$inferSelect): LibraryExerciseDTO {
+function mapLibrary(row: LibraryView): LibraryExerciseDTO {
   const imageUrl = libraryImageUrl(row)
   return {
     id: row.id,
@@ -696,7 +796,7 @@ function mapLibrary(row: typeof libraryExercises.$inferSelect): LibraryExerciseD
 export async function listLibrary() {
   const db = await getDb()
   const rows = await db
-    .select()
+    .select(libraryColumns)
     .from(libraryExercises)
     .where(isNull(libraryExercises.deletedAt))
     .orderBy(asc(libraryExercises.position), asc(libraryExercises.name))
@@ -711,7 +811,7 @@ export async function createLibraryExercise(name: string, image?: { bytes: Buffe
   const db = await getDb()
   const active = and(eq(libraryExercises.normalizedName, normalized), isNull(libraryExercises.deletedAt))
   const [[existing], [maxRow]] = await Promise.all([
-    db.select().from(libraryExercises).where(active),
+    db.select(libraryColumns).from(libraryExercises).where(active),
     db.select({ value: max(libraryExercises.position) }).from(libraryExercises),
   ])
   if (existing) return { exercise: mapLibrary(existing) }
@@ -732,11 +832,11 @@ export async function createLibraryExercise(name: string, image?: { bytes: Buffe
         imageMime: stored.imageMime,
         imagePath: stored.imagePath,
       })
-      .returning()
+      .returning(libraryColumns)
     return { exercise: mapLibrary(row!) }
   } catch (error) {
     if (!isUniqueViolation(error)) throw error
-    const [row] = await db.select().from(libraryExercises).where(active)
+    const [row] = await db.select(libraryColumns).from(libraryExercises).where(active)
     if (!row) throw error
     return { exercise: mapLibrary(row) }
   }
@@ -748,27 +848,96 @@ export async function deleteLibraryExercise(id: string) {
     .update(libraryExercises)
     .set({ deletedAt: new Date() })
     .where(and(eq(libraryExercises.id, id), isNull(libraryExercises.deletedAt)))
-    .returning()
+    .returning({ id: libraryExercises.id })
   return Boolean(row)
+}
+
+async function readInlineOrPath(
+  meta: { mime: string | null; path: string | null; hasInline: boolean },
+  loadInline: () => Promise<{ data: string | null; mime: string | null } | undefined>,
+) {
+  if (meta.path) return readStoredExercise({ imageData: null, imageMime: meta.mime, imagePath: meta.path })
+  if (!meta.hasInline) return null
+  const blob = await loadInline()
+  if (!blob?.data) return null
+  return readStoredExercise({ imageData: blob.data, imageMime: blob.mime, imagePath: null })
 }
 
 export async function getLibraryImage(id: string) {
   const db = await getDb({ migrate: false })
-  const [row] = await db
-    .select()
+  const where = and(eq(libraryExercises.id, id), isNull(libraryExercises.deletedAt))
+  const [meta] = await db
+    .select({
+      mime: libraryExercises.imageMime,
+      path: libraryExercises.imagePath,
+      hasInline: sql<boolean>`${libraryExercises.imageData} is not null`.mapWith(Boolean),
+    })
     .from(libraryExercises)
-    .where(and(eq(libraryExercises.id, id), isNull(libraryExercises.deletedAt)))
-  if (!row) return null
-  return readStoredExercise(row)
+    .where(where)
+  if (!meta) return null
+  return readInlineOrPath(meta, async () => {
+    const [blob] = await db
+      .select({ data: libraryExercises.imageData, mime: libraryExercises.imageMime })
+      .from(libraryExercises)
+      .where(where)
+    return blob
+  })
+}
+
+export async function readExerciseFile(id: string, options?: DbOptions) {
+  const db = await getDb(options)
+  const [meta] = await db
+    .select({
+      mime: exercises.imageMime,
+      path: exercises.imagePath,
+      hasInline: sql<boolean>`${exercises.imageData} is not null`.mapWith(Boolean),
+    })
+    .from(exercises)
+    .where(eq(exercises.id, id))
+  if (!meta) return null
+  return readInlineOrPath(meta, async () => {
+    const [blob] = await db
+      .select({ data: exercises.imageData, mime: exercises.imageMime })
+      .from(exercises)
+      .where(eq(exercises.id, id))
+    return blob
+  })
+}
+
+export async function readClientAvatarFile(where: { id?: string; token?: string }) {
+  const db = await getDb({ migrate: false })
+  const filter = where.id ? eq(clients.id, where.id) : eq(clients.token, where.token ?? '')
+  const [meta] = await db
+    .select({
+      id: clients.id,
+      mime: clients.avatarMime,
+      path: clients.avatarPath,
+      hasInline: sql<boolean>`${clients.avatarData} is not null`.mapWith(Boolean),
+    })
+    .from(clients)
+    .where(filter)
+  if (!meta) return null
+  if (meta.path) {
+    return readStoredAvatar({ avatarData: null, avatarMime: meta.mime, avatarPath: meta.path })
+  }
+  if (!meta.hasInline) return null
+  const [blob] = await db
+    .select({ data: clients.avatarData, mime: clients.avatarMime })
+    .from(clients)
+    .where(eq(clients.id, meta.id))
+  if (!blob?.data) return null
+  return readStoredAvatar({ avatarData: blob.data, avatarMime: blob.mime, avatarPath: null })
 }
 
 export async function getExerciseImageForToken(token: string, exerciseId: string) {
   const person = await getClientByToken(token, { migrate: false })
   if (!person) return null
-  const row = await getExerciseRow(exerciseId, { migrate: false })
-  if (!row) return null
   const db = await getDb({ migrate: false })
-  const [plan] = await db.select().from(workouts).where(eq(workouts.id, row.workoutId))
-  if (!plan || plan.clientId !== person.id) return null
-  return readStoredExercise(row)
+  const [owner] = await db
+    .select({ clientId: workouts.clientId })
+    .from(exercises)
+    .innerJoin(workouts, eq(workouts.id, exercises.workoutId))
+    .where(eq(exercises.id, exerciseId))
+  if (!owner || owner.clientId !== person.id) return null
+  return readExerciseFile(exerciseId, { migrate: false })
 }

@@ -1,5 +1,4 @@
-import { readStoredAvatar } from '@/lib/avatar-storage'
-import { clearClientAvatar, getClientByToken, saveClientAvatarBytes } from '@/lib/data'
+import { clearClientAvatar, getClientByToken, readClientAvatarFile, saveClientAvatarBytes } from '@/lib/data'
 import { json, rejectCrossSite } from '@/lib/http'
 import { fileResponse, readFormImage } from '@/lib/image-payload'
 
@@ -12,7 +11,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   const { token } = await ctx.params
   const client = await getClientByToken(token, { migrate: false })
   if (!client) return json({ error: 'Nie znaleziono planu.' }, 404)
-  const file = await readStoredAvatar(client)
+  const file = await readClientAvatarFile({ id: client.id })
   if (!file) return json({ error: 'Brak zdjęcia.' }, 404)
   return fileResponse(file, _req)
 }

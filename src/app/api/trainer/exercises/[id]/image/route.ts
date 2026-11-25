@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
-import { deleteStoredImage, readStoredExercise, storeExerciseImage } from '@/lib/avatar-storage'
-import { getExerciseRow } from '@/lib/data'
+import { deleteStoredImage, storeExerciseImage } from '@/lib/avatar-storage'
+import { getExerciseRow, readExerciseFile } from '@/lib/data'
 import { getDb } from '@/lib/db'
 import { trainerGuard } from '@/lib/guard'
 import { json, rejectCrossSite } from '@/lib/http'
@@ -18,7 +18,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   const { id } = await ctx.params
   const row = await getExerciseRow(id, { migrate: false })
   if (!row) return json({ error: 'Nie znaleziono ćwiczenia.' }, 404)
-  const file = await readStoredExercise(row)
+  const file = await readExerciseFile(id, { migrate: false })
   if (!file) return json({ error: 'Brak zdjęcia.' }, 404)
   return fileResponse(file, _req)
 }
